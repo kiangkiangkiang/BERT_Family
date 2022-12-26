@@ -6,8 +6,8 @@ version='0.0.1',
 description='BERT models summary',
 author='Luka Jiang',
 author_email='lukajiang1998@gmail.com',
-url='https://github.com/kiangkiangkiang',
-packages=['src/BERT_Family'],
+url='https://github.com/kiangkiangkiang/BERT_Family',
+packages=['BERT_Family'],
 # 表明當前模塊依賴哪些包，若環境中沒有，則會從pypi中下載安裝  
 install_requires=['docutils>=0.3'],  
 classifiers = [  
@@ -32,3 +32,5 @@ classifiers = [
     ],
 license='MIT',
 zip_safe=False)
+
+
