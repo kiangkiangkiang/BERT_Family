@@ -5,6 +5,7 @@ import torch
 from torchtext import datasets
 from transformers import BertTokenizer
 import pandas as pd
+from functools import reduce
 
 ##############################test######################################
 tmp = datasets.STSB(root='.data', split=('train', 'dev', 'test'))
@@ -16,6 +17,8 @@ tmp[16000:16010]
 import random
 random.sample(tmp, 10)
 vocab["瓶"]
+
+print(123)
 
 df_train = pd.read_csv("~/Downloads/train.csv")
 df_train.iloc[2,:]
@@ -50,7 +53,11 @@ ss[df_train.label[5]]
 df_train.shape[0]
 t = BertTokenizer.from_pretrained('bert-base-uncased') 
 
-temp = df_train[['title1_zh','title2_zh']]
+temp = df_train[['title1_zh']]
+temp_t = df_train[['label']]
+pd.unique(temp_t)
+pd.DataFrame(temp_t)
+pd.Series(temp_t)
 
 temp2 = temp.iloc[[1,32,300,555,10007]]
 temp2.values
@@ -62,13 +69,24 @@ tokenizer.tokenize(temp2.iloc[:,0])
 torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)
 tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=50, truncation = True)
 
-
-training = Classification_Dataset(temp, temp2)
+temp_t = temp_t.values.squeeze()
+training = Classification_Dataset(temp, temp_t)
 train_loader = data.DataLoader(training, batch_size=64, shuffle=True)
 train_iter = infinite_iter(train_loader)
-a, b, c = next(train_iter)
+a, b = next(train_iter)
+a['input_ids'].shape
 a
+a[0,:]
 a.shape
+print(a.iloc[100])
+
+def fn(x, y):
+    return temp.iloc[:, x] + '[SEP]' + temp.iloc[:, y] + '[SEP]'
+a = reduce(fn, [0,1])
+a = pd.DataFrame(a)
+a.iloc[2,:]
+s = reduce(lambda x,y: temp.iloc[:, x] + '[SEP]' + temp.iloc[:, y] + '[SEP]', [0,1,2])
+s
 ##############################test######################################
 
 
@@ -86,21 +104,13 @@ class BERT_Family(nn.Module):
 
 
         #build target dictionary
-        rawTarget_dict = {}
-        for i, ele in enumerate(pd.unique(rawTarget)):
-            rawTarget_dict[ele] = i
+        
 
 
         
 
         formattedData = 0
         return formattedData
-    
-
-
-
-
-
 
 
 class BF_Classification(BERT_Family):
@@ -126,24 +136,36 @@ def test(a = []):
 ########## Preprocessing ##########
 class Classification_Dataset(data.Dataset):
     def __init__(self, rawData, rawTarget, maxLength = 100) -> None:
-        super().__init__()
         """ 
-        rawData: n by p1, n: observations (total sequence). p1: number of sequences in each case.
-
-        rawTarget: n by p2, n: observations (total sequence). p2: number of labels in each case.
+        rawData: n by p, n: observations (total sequence). p: number of sequences in each case.
+        rawTarget: a list of n-length.
         """
-        #Prepare for one type data format for downstream task
-        self.rawData, self.rawTarget = pd.DataFrame(rawData), pd.DataFrame(rawTarget)
-        
-        
+        super().__init__()
+        self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
+        assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
+
+        self.rawTarget_dict = {}
+        for i, ele in enumerate(pd.unique(rawTarget)):
+            self.rawTarget_dict[ele] = i
+        print(self.rawTarget_dict)
+        self.maxLength = maxLength
+
     def __len__(self):
         return self.rawData.shape[0]
-    def __getitem__(self, idx):
-        token = tokenizer(self.rawData.iloc[idx, 0], padding="max_length", max_length=50, truncation = True)
-        return torch.tensor(token["input_ids"], dtype=torch.long), \
-                torch.tensor(token["token_type_ids"], dtype=torch.long), \
-                    torch.tensor(token["attention_mask"], dtype=torch.long)
 
+    def __getitem__(self, idx):
+        if self.rawData.shape[1] == 1:
+            currentData = self.rawData.iloc[idx, 0]
+        else:
+            self.rawData.iloc[idx, 0] + '[SEP]' + self.rawData.iloc[idx, 1]
+            #這裡要補segment的
+
+        result = tokenizer(currentData, padding="max_length", max_length=self.maxLength, truncation = True)
+        return torch.tensor(result["input_ids"], dtype=torch.long), \
+                torch.tensor(result["token_type_ids"], dtype=torch.long), \
+                    torch.tensor(result["attention_mask"], dtype=torch.long), \
+                        self.rawTarget_dict[self.rawTarget[idx]]
+         
 #dataset / dataloader
 #
 
