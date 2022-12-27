@@ -34,6 +34,9 @@ y = df_train.label
 
 test = '[CLS]' + x.iloc[0,0] + '[SEP]' + x.iloc[0,1] + '[SEP]' 
 tmp2 = tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=100)
+tmp3 = tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=100)
+tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=50, truncation = True)
+tmp3["token_type_ids"] = 1
 
 tmp = tokenizer.tokenize(test)
 ids =  tokenizer.convert_tokens_to_ids(tmp)
@@ -44,7 +47,28 @@ for i, ele in enumerate(pd.unique(df_train.label)):
 
 ss
 ss[df_train.label[5]]
+df_train.shape[0]
 t = BertTokenizer.from_pretrained('bert-base-uncased') 
+
+temp = df_train[['title1_zh','title2_zh']]
+
+temp2 = temp.iloc[[1,32,300,555,10007]]
+temp2.values
+temp2.iloc[:,0]
+
+tokenizer(temp2.iloc[:,0].values)
+tokenizer.tokenize(temp2.iloc[:,0])
+
+torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)
+tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=50, truncation = True)
+
+
+training = Classification_Dataset(temp, temp2)
+train_loader = data.DataLoader(training, batch_size=64, shuffle=True)
+train_iter = infinite_iter(train_loader)
+a, b, c = next(train_iter)
+a
+a.shape
 ##############################test######################################
 
 
@@ -59,13 +83,7 @@ class BERT_Family(nn.Module):
         return 
     
     def Data_Formatting(self, rawData, rawTarget):
-        """ 
-        rawData: n by p1, n: observations (total sequence). p1: number of sequences in each case.
 
-        rawTarget: n by p2, n: observations (total sequence). p2: number of labels in each case.
-        """
-        #Prepare for one type data format for downstream task
-        rawData, rawTarget = pd.DataFrame(rawData), pd.DataFrame(rawTarget)
 
         #build target dictionary
         rawTarget_dict = {}
@@ -107,17 +125,36 @@ def test(a = []):
 
 ########## Preprocessing ##########
 class Classification_Dataset(data.Dataset):
-    def __init__(self) -> None:
-       super().__init__()
+    def __init__(self, rawData, rawTarget, maxLength = 100) -> None:
+        super().__init__()
+        """ 
+        rawData: n by p1, n: observations (total sequence). p1: number of sequences in each case.
+
+        rawTarget: n by p2, n: observations (total sequence). p2: number of labels in each case.
+        """
+        #Prepare for one type data format for downstream task
+        self.rawData, self.rawTarget = pd.DataFrame(rawData), pd.DataFrame(rawTarget)
+        
+        
     def __len__(self):
-        return len(self.data)
+        return self.rawData.shape[0]
     def __getitem__(self, idx):
-        return self.data[idx], self.target[idx], idx
+        token = tokenizer(self.rawData.iloc[idx, 0], padding="max_length", max_length=50, truncation = True)
+        return torch.tensor(token["input_ids"], dtype=torch.long), \
+                torch.tensor(token["token_type_ids"], dtype=torch.long), \
+                    torch.tensor(token["attention_mask"], dtype=torch.long)
 
 #dataset / dataloader
 #
 
-
+def infinite_iter(data_loader):
+  it = iter(data_loader)
+  while True:
+    try:
+      ret = next(it)
+      yield ret
+    except StopIteration:
+      it = iter(data_loader)
 
 ########## Train and Pred and Eval... ##########
 #build
