@@ -7,7 +7,125 @@ from transformers import BertTokenizer
 import pandas as pd
 from functools import reduce
 
+
+
+########## Modules ##########
+class BERT_Family(nn.Module):
+    def __init__(self, tokenizer = 'bert-base-uncased', maxLength = 100) -> None:
+        super().__init__()
+        self.tokenizer = BertTokenizer.from_pretrained(tokenizer)
+        self.maxLength = maxLength
+    def infinite_iter(self, data_loader):
+        it = iter(data_loader)
+        while True:
+            try:
+                ret = next(it)
+                yield ret
+            except StopIteration:
+                it = iter(data_loader)
+
+
+    def Load_Pretrained_Model(self, modelName: str):
+        return 
+    
+    def Data_Formatting(self, rawData, rawTarget):
+        return 
+
+
+class BF_Classification(BERT_Family):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+    def Build_Dataset(self, rawData, rawTarget, **kwargs):
+        """ 
+        Input:
+        rawData: n by p, n: observations (total sequence). p: number of sequences in each case.
+        rawTarget: a list of n-length.
+        **kwargs: The argument in DataLoader
+
+        Return 3 object:
+        dataset, dataloader, dataloader with iter
+        """
+        self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, maxLength = self.maxLength)
+        self.dataLoader = data.DataLoader(self.dataset, **kwargs)
+        return self.dataset, self.dataLoader, self.infinite_iter(self.dataLoader)
+    
+    def Build_Model(self):
+
+
+
+class BF_QA(BERT_Family):
+    def __init__(self) -> None:
+        super().__init__()
+
+class Configurations(object):
+  def __init__(self):
+    self.batch_size = 64
+    self.linear_hidden_layer = 5
+    self.epoch = 10000
+    self.learning_rate = 0.0001
+    self.BF_MaxLength = 30
+
+########## Preprocessing ##########
+#One or two sentence with one dim label
+class Classification_Dataset(data.Dataset):
+    def __init__(self, rawData, rawTarget, maxLength = 100) -> None:
+        super().__init__()
+        self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
+        assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
+
+        self.rawTarget_dict = {}
+        for i, ele in enumerate(pd.unique(rawTarget)):
+            self.rawTarget_dict[ele] = i
+        self.maxLength = maxLength
+
+    def __len__(self):
+        return self.rawData.shape[0]
+
+    def __getitem__(self, idx):
+        if self.rawData.shape[1] == 1:
+            result = tokenizer.encode_plus(self.rawData.iloc[idx, 0], self.rawData.iloc[idx, 1], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
+        else:
+            result = tokenizer.encode_plus(self.rawData.iloc[idx, 0], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
+        return result, torch.tensor(self.rawTarget_dict[self.rawTarget[idx]])
+
+
+            
+                        
+         
+#dataset / dataloader
+#
+
+
+
+
+########## Train and Pred and Eval... ##########
+#build
+
+
+
+
 ##############################test######################################
+df_train = pd.read_csv("~/Downloads/train.csv")
+temp = df_train[['title1_zh', "title2_zh"]]
+temp_2 = df_train[['title1_zh']]
+temp_t = df_train[['label']]
+temp_t = temp_t.values.squeeze()
+
+b = BF_Classification(tokenizer = "bert-base-chinese", maxLength = 70)
+training, train_loader, train_iter= b.Build_Dataset(rawData = temp, rawTarget = temp_t, batch_size=64, shuffle=True)
+
+
+
+
+
+
+
+a, b = next(train_iter)
+a, b
+
+
+
 tmp = datasets.STSB(root='.data', split=('train', 'dev', 'test'))
 tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 vocab = t.vocab
@@ -53,7 +171,7 @@ ss[df_train.label[5]]
 df_train.shape[0]
 t = BertTokenizer.from_pretrained('bert-base-uncased') 
 
-temp = df_train[['title1_zh']]
+temp = df_train[['title1_zh', "title2_zh"]]
 temp_t = df_train[['label']]
 pd.unique(temp_t)
 pd.DataFrame(temp_t)
@@ -67,14 +185,25 @@ tokenizer(temp2.iloc[:,0].values)
 tokenizer.tokenize(temp2.iloc[:,0])
 
 torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)
-tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=50, truncation = True)
+s = tokenizer(x.iloc[0,0] + '[SEP]' + x.iloc[0,1], padding="max_length", max_length=50, truncation = True)
+s
 
-temp_t = temp_t.values.squeeze()
-training = Classification_Dataset(temp, temp_t)
-train_loader = data.DataLoader(training, batch_size=64, shuffle=True)
-train_iter = infinite_iter(train_loader)
-a, b = next(train_iter)
-a['input_ids'].shape
+
+a
+b
+a['input_ids']
+a, b, c, d= next(train_iter)
+a
+a["input_ids"]
+type(a)
+dir(a)
+b[4,]
+len(b[1,])
+temp[1,0]
+temp.iloc[1,1]
+tokenizer.encode_plus(temp.iloc[1,0], temp.iloc[1, 1], padding="max_length", max_length=100, truncation = True)
+
+a['input_ids'].view(64, 100).shape
 a
 a[0,:]
 a.shape
@@ -87,99 +216,10 @@ a = pd.DataFrame(a)
 a.iloc[2,:]
 s = reduce(lambda x,y: temp.iloc[:, x] + '[SEP]' + temp.iloc[:, y] + '[SEP]', [0,1,2])
 s
+torch.concat((torch.tensor([0]*10), torch.tensor([1]*30)))
+a = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,\
+        0, 0, 0])
+b = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+torch.concat((a,b))
+
 ##############################test######################################
-
-
-
-########## Modules ##########
-class BERT_Family(nn.Module):
-    def __init__(self, tokenizer = 'bert-base-uncased') -> None:
-        super().__init__()
-        self.tokenizer = BertTokenizer.from_pretrained(tokenizer)
-
-    def Load_Pretrained_Model(self, modelName: str):
-        return 
-    
-    def Data_Formatting(self, rawData, rawTarget):
-
-
-        #build target dictionary
-        
-
-
-        
-
-        formattedData = 0
-        return formattedData
-
-
-class BF_Classification(BERT_Family):
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-
-
-class BF_QA(BERT_Family):
-    def __init__(self) -> None:
-        super().__init__()
-
-class Configurations(object):
-  def __init__(self):
-    self.batch_size = 64
-    self.linear_hidden_layer = 5
-    self.epoch = 10000
-    self.learning_rate = 0.0001
-    self.BF_MaxLength = 30
-
-def test(a = []):
-    return a
-
-########## Preprocessing ##########
-class Classification_Dataset(data.Dataset):
-    def __init__(self, rawData, rawTarget, maxLength = 100) -> None:
-        """ 
-        rawData: n by p, n: observations (total sequence). p: number of sequences in each case.
-        rawTarget: a list of n-length.
-        """
-        super().__init__()
-        self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
-        assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
-
-        self.rawTarget_dict = {}
-        for i, ele in enumerate(pd.unique(rawTarget)):
-            self.rawTarget_dict[ele] = i
-        print(self.rawTarget_dict)
-        self.maxLength = maxLength
-
-    def __len__(self):
-        return self.rawData.shape[0]
-
-    def __getitem__(self, idx):
-        if self.rawData.shape[1] == 1:
-            currentData = self.rawData.iloc[idx, 0]
-        else:
-            self.rawData.iloc[idx, 0] + '[SEP]' + self.rawData.iloc[idx, 1]
-            #這裡要補segment的
-
-        result = tokenizer(currentData, padding="max_length", max_length=self.maxLength, truncation = True)
-        return torch.tensor(result["input_ids"], dtype=torch.long), \
-                torch.tensor(result["token_type_ids"], dtype=torch.long), \
-                    torch.tensor(result["attention_mask"], dtype=torch.long), \
-                        self.rawTarget_dict[self.rawTarget[idx]]
-         
-#dataset / dataloader
-#
-
-def infinite_iter(data_loader):
-  it = iter(data_loader)
-  while True:
-    try:
-      ret = next(it)
-      yield ret
-    except StopIteration:
-      it = iter(data_loader)
-
-########## Train and Pred and Eval... ##########
-#build
-
-
-
