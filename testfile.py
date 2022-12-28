@@ -5,17 +5,21 @@ import torch
 from torchtext import datasets
 from transformers import BertTokenizer
 import pandas as pd
+from transformers import BertForSequenceClassification
 from functools import reduce
-
 
 
 ########## Modules ##########
 class BERT_Family(nn.Module):
-    def __init__(self, tokenizer = 'bert-base-uncased', maxLength = 100) -> None:
+    def __init__(self, pretrainedModel = 'bert-base-uncased', maxLength = 100, device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")) -> None:
         super().__init__()
-        self.tokenizer = BertTokenizer.from_pretrained(tokenizer)
+        print("Using device: ", device)
+        self.pretrainedModel = pretrainedModel
+        self.tokenizer = BertTokenizer.from_pretrained(pretrainedModel)
         self.maxLength = maxLength
-    def infinite_iter(self, data_loader):
+        self.dataset, self.dataLoader, self.labelLength = None, None, None
+        self.model = None
+    def Infinite_Iter(self, data_loader):
         it = iter(data_loader)
         while True:
             try:
@@ -23,6 +27,16 @@ class BERT_Family(nn.Module):
                 yield ret
             except StopIteration:
                 it = iter(data_loader)
+    def Show_Model_Architecture(self) -> None:
+        if not self.model:
+            print("No model in the BERT_Family object.")
+        for name, module in self.model.named_children():
+            if name == "bert":
+                for n, _ in module.named_children():
+                    print(f"{name}:{n}")
+            else:
+                print("{:15} {}".format(name, module))
+            
 
 
     def Load_Pretrained_Model(self, modelName: str):
@@ -46,11 +60,17 @@ class BF_Classification(BERT_Family):
         Return 3 object:
         dataset, dataloader, dataloader with iter
         """
-        self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, maxLength = self.maxLength)
+        self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
         self.dataLoader = data.DataLoader(self.dataset, **kwargs)
-        return self.dataset, self.dataLoader, self.infinite_iter(self.dataLoader)
+        self.labelLength = len(self.dataset.rawTarget_dict)
+        return self.dataset, self.dataLoader, self.Infinite_Iter(self.dataLoader)
     
-    def Build_Model(self):
+    def Build_Model(self, labelLength, **kwargs):
+        assert self.labelLength & (self.labelLength == labelLength), "Mismatch on the length of labels."
+        self.model = BertForSequenceClassification.from_pretrained(self.pretrainedModel, num_labels = labelLength, **kwargs)
+           
+        return self.model
+    
 
 
 
@@ -69,8 +89,9 @@ class Configurations(object):
 ########## Preprocessing ##########
 #One or two sentence with one dim label
 class Classification_Dataset(data.Dataset):
-    def __init__(self, rawData, rawTarget, maxLength = 100) -> None:
+    def __init__(self, rawData, rawTarget, tokenizer, maxLength = 100) -> None:
         super().__init__()
+        self.tokenizer = tokenizer
         self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
         assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
 
@@ -84,14 +105,14 @@ class Classification_Dataset(data.Dataset):
 
     def __getitem__(self, idx):
         if self.rawData.shape[1] == 1:
-            result = tokenizer.encode_plus(self.rawData.iloc[idx, 0], self.rawData.iloc[idx, 1], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
+            result = self.tokenizer.encode_plus(self.rawData.iloc[idx, 0], self.rawData.iloc[idx, 1], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
         else:
-            result = tokenizer.encode_plus(self.rawData.iloc[idx, 0], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
+            result = self.tokenizer.encode_plus(self.rawData.iloc[idx, 0], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
         return result, torch.tensor(self.rawTarget_dict[self.rawTarget[idx]])
 
 
             
-                        
+#build customize model                 
          
 #dataset / dataloader
 #
@@ -112,13 +133,10 @@ temp_2 = df_train[['title1_zh']]
 temp_t = df_train[['label']]
 temp_t = temp_t.values.squeeze()
 
-b = BF_Classification(tokenizer = "bert-base-chinese", maxLength = 70)
+b = BF_Classification(pretrainedModel = "bert-base-chinese", maxLength = 70)
 training, train_loader, train_iter= b.Build_Dataset(rawData = temp, rawTarget = temp_t, batch_size=64, shuffle=True)
-
-
-
-
-
+myModel = b.Build_Model(labelLength=b.labelLength)
+b.Show_Model_Architecture()
 
 
 a, b = next(train_iter)
