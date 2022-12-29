@@ -189,11 +189,12 @@ class testaaa(object):
     def myTest(self, a, b):
         return a+b
 t = testaaa()
+torch.cuda.device_count()
 d
 import os
 os.getcwd()
 #df_train = pd.read_csv("~/Downloads/train.csv")
-df_train = pd.read_csv("~/BERT_Family/data/news/train.csv")
+df_train = pd.read_csv("~work/BERT_Family/data/news/train.zip")#in ubutn
 empty_title = ((df_train['title2_zh'].isnull()) \
                | (df_train['title1_zh'].isnull()) \
                | (df_train['title2_zh'] == '') \
@@ -346,3 +347,5 @@ b = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 torch.concat((a,b))
 
 ##############################test######################################
+import os
+print(os.getcwd())
