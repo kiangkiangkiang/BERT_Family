@@ -7,6 +7,8 @@ from transformers import BertTokenizer
 import pandas as pd
 from transformers import BertForSequenceClassification
 from functools import reduce
+from accelerate import Accelerator
+from tqdm.auto import tqdm
 
 
 ########## Modules ##########
@@ -45,22 +47,23 @@ class BERT_Family(nn.Module):
         self.tokenizer = BertTokenizer.from_pretrained(pretrainedModel)
         self.maxLength = maxLength
         self.dataset, self.dataLoader, self.dataIter = None, None, None
-        self.model, self.iteration = None, 0
+        self.model, self.iteration, self.batchSize = None, 0, 100
+        self.accelerator = Accelerator()
         self.status = {"BERT_Type": ["BERT_Family"],\
                         "hasData": False,\
                         "hasModel": False,\
                         "isTrained": False,\
-                        "trainingTimes": 0,\
-                        "accumulateEpoch": 0}
+                        "accumulateEpoch": 0,\
+                        "accumulateIteration": 0}
 
-    def _Infinite_Iter(self):
-        it = iter(self.dataLoader)
+    def _Infinite_Iter(self, dataLoader):
+        it = iter(dataLoader)
         while True:
             try:
                 ret = next(it)
                 yield ret
             except StopIteration:
-                it = iter(self.dataLoader)
+                it = iter(dataLoader)
 
     #為什麼不直接吃一個model就不用判斷了，因為這樣寫起來比較ＯＯ
     def Show_Model_Architecture(self) -> None:
@@ -77,8 +80,7 @@ class BERT_Family(nn.Module):
         print(self.model.config)
 
     def Show_Status(self) -> None:
-        print("\n".join("{}\t{}".format(k, v) for k, v in self.status.items()))
-    
+        print("\n".join("{}\t{}".format(k, v) for k, v in self.status.items()))  
 
     def Training(self, epochs = 50, optimizer = None):
         assert self.status["hasModel"], "No model in the BERT_Family object."
@@ -89,7 +91,8 @@ class BERT_Family(nn.Module):
         print("start2")
         #start train
         for epoch in range(epochs):
-            for _ in range(self.iteration):
+            for i in tqdm(range(self.iteration)):
+                print("start iter: ", i)
                 running_loss = 0.0
                 inputData, target = next(self.dataIter)
                 tokens_tensors, segments_tensors, masks_tensors = inputData['input_ids'].to(self.device), inputData['token_type_ids'].to(self.device), inputData['attention_mask'].to(self.device)
@@ -106,27 +109,28 @@ class BERT_Family(nn.Module):
 
                 loss = outputs[0]
                 # backward
-                loss.backward()
+                #loss.backward()
+                self.accelerator.backward(loss)
                 optimizer.step()
                 running_loss += loss.item()
+                self.status["accumulateIteration"] += 1
             # 計算分類準確率
             #_, acc = get_predictions(model, trainloader, compute_acc=True)
 
             print('[epoch %d] loss: %.3f' %(epoch + 1, running_loss))
             self.status["accumulateEpoch"] += 1
-        self.status["trainingTimes"] += 1
         return loss
     
 
 #Sequence Classification
 class BF_Classification(BERT_Family):
     def __init__(self, **kwargs) -> None:
-        print("bas")
+        print("bsas")
         super().__init__(**kwargs)
         self.labelLength = None
         self.status["BERT_Type"].append("BF_Classification")
 
-    def Set_Dataset(self, rawData, rawTarget, batchSize = 100, **kwargs) -> None:
+    def Set_Dataset(self, rawData, rawTarget, batchSize = 100, forObjectData = True, **kwargs):
         """ 
         Input:
         rawData: n by p, n: observations (total sequence). p: number of sequences in each case.
@@ -136,20 +140,81 @@ class BF_Classification(BERT_Family):
         Return 3 object:
         dataset, dataloader, dataloader with iter
         """
+        dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
+        dataLoader = data.DataLoader(self.dataset, batch_size=self.batchSize, **kwargs)
+        dataIter = self._Infinite_Iter(self.dataLoader)
+
+        
+        self.dataset, self.dataLoader, self.dataIter = dataset, dataLoader, dataIter
+        self.batchSize = batchSize
         self.status["hasData"] = True
-        self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
-        self.dataLoader = data.DataLoader(self.dataset, batch_size=batchSize, **kwargs)
         self.iteration = int(rawData.shape[0] / batchSize)
         self.labelLength = len(self.dataset.rawTarget_dict)
-        self.dataIter = self._Infinite_Iter()
-        #return self.dataset, self.dataLoader, self.dataIter
-    
+        
+        return dataset, dataLoader, dataIter
+
     def Create_Model(self, labelLength, pretrainedModel = None, **kwargs) -> None:
         assert self.labelLength & (self.labelLength == labelLength), "Mismatch on the length of labels."
         self.status["hasModel"] = True
         if not pretrainedModel: pretrainedModel = self.pretrainedModel
         self.model = BertForSequenceClassification.from_pretrained(pretrainedModel, num_labels = labelLength, **kwargs)   
         #return self.model
+    """
+    def Forecasting(self):
+        pass
+
+    def Testing(self, model, testingData, testingTarget, compute_acc=False, **kwargs):
+        datasset = Classification_Dataset(rawData = testingData, rawTarget = testingTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
+        dataloader = data.DataLoader(self.dataset, batch_size=self.batchSize, **kwargs)
+        dataIter = self._Infinite_Iter()
+
+        predictions = None
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            # 遍巡整個資料集
+            for data in dataloader:
+                # 將所有 tensors 移到 GPU 上
+                if next(model.parameters()).is_cuda:
+                    data = [t.to("cuda:0") for t in data if t is not None]
+                
+                
+                # 別忘記前 3 個 tensors 分別為 tokens, segments 以及 masks
+                # 且強烈建議在將這些 tensors 丟入 `model` 時指定對應的參數名稱
+                tokens_tensors, segments_tensors, masks_tensors = data[:3]
+                outputs = model(input_ids=tokens_tensors, 
+                                token_type_ids=segments_tensors, 
+                                attention_mask=masks_tensors)
+                
+                logits = outputs[0]
+                _, pred = torch.max(logits.data, 1)
+                
+                # 用來計算訓練集的分類準確率
+                if compute_acc:
+                    labels = data[3]
+                    total += labels.size(0)
+                    correct += (pred == labels).sum().item()
+                    
+                # 將當前 batch 記錄下來
+                if predictions is None:
+                    predictions = pred
+                else:
+                    predictions = torch.cat((predictions, pred))
+        
+        if compute_acc:
+            acc = correct / total
+            return predictions, acc
+        return predictions
+    """    
+    """ # 讓模型跑在 GPU 上並取得訓練集的分類準確率
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("device:", device)
+    model = model.to(device)
+    _, acc = get_predictions(model, trainloader, compute_acc=True)
+    print("classification acc:", acc) """
+
+  
 
 
 class BF_QA(BERT_Family):
@@ -193,8 +258,26 @@ torch.cuda.device_count()
 d
 import os
 os.getcwd()
-#df_train = pd.read_csv("~/Downloads/train.csv")
-df_train = pd.read_csv("~work/BERT_Family/data/news/train.zip")#in ubutn
+from zipfile import ZipFile
+
+
+
+##########in ubutn
+dataDir = "/home/ubuntu/work/BERT_Family/data/news/news.zip"#in ubutn
+tmp = ZipFile("/BERT_Family/data/news/news.zip")
+from io import StringIO
+from zipfile import Path
+zipped = Path(dataDir, at="train.csv")
+df_train = pd.read_csv(StringIO(zipped.read_text()))
+#########
+
+
+##########in mac
+#dataDir = "~/Downloads/news.csv"
+df_train = pd.read_csv(dataDir)
+############
+
+
 empty_title = ((df_train['title2_zh'].isnull()) \
                | (df_train['title1_zh'].isnull()) \
                | (df_train['title2_zh'] == '') \
@@ -204,13 +287,21 @@ temp = df_train[['title1_zh', "title2_zh"]]
 #temp_2 = df_train[['title1_zh']]
 temp_t = df_train[['label']]
 temp_t = temp_t.values.squeeze()
-del b
+
+import random
+testSize = 1000
+testIdx = random.sample(range(temp.shape[0]), testSize)
+
+
+x = temp.iloc[testIdx]
+y = temp_t[testIdx]
 c = BF_Classification(pretrainedModel = "bert-base-chinese", maxLength = 70)
-c.Set_Dataset(rawData = temp, rawTarget = temp_t, batchSize=64, shuffle=True)
+c.Set_Dataset(rawData = x, rawTarget = y, batchSize=120, shuffle=True)
 c.Create_Model(labelLength=c.labelLength)
 c.Show_Model_Architecture()
 c.Show_Status()
-loss = c.Training(20)
+loss = c.Training(3)
+
 
 s = next(c.dataIter)
 test = s[0]['input_ids']
