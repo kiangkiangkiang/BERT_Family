@@ -17,6 +17,7 @@ from tqdm.auto import tqdm
 class Classification_Dataset(data.Dataset):
     def __init__(self, rawData, rawTarget, tokenizer, maxLength = 100) -> None:
         super().__init__()
+        print("123")
         self.tokenizer = tokenizer
         self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
         assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
@@ -87,18 +88,18 @@ class BERT_Family(nn.Module):
         if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
         self.status["isTrained"] = True
         self.model.train()
-        gpu_usage()
         print("start2")
         #start train
         for epoch in range(epochs):
             for df in tqdm(self.dataLoader):
                 
                 running_loss = 0.0
+                input = [t for t in df if t is not None]
+                """ 
                 tmp = [t.to(self.device) for t in df if t is not None]
                 tokens_tensors, segments_tensors, masks_tensors = tmp[0]["input_ids"].squeeze(1), tmp[0]["token_type_ids"].squeeze(1), tmp[0]["attention_mask"].squeeze(1)
                 target = tmp[1]
-                gpu_usage()
-                """ 
+                
                 inputData, target = next(self.dataIter)
                 tokens_tensors, segments_tensors, masks_tensors = inputData['input_ids'].to(self.device), inputData['token_type_ids'].to(self.device), inputData['attention_mask'].to(self.device)
                 tokens_tensors, segments_tensors, masks_tensors = tokens_tensors.squeeze(1), segments_tensors.squeeze(1), masks_tensors.squeeze(1)
@@ -107,11 +108,15 @@ class BERT_Family(nn.Module):
                 optimizer.zero_grad()
 
                 # forward pass
+                outputs = self.model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
+                                token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
+                                attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
+                """ 
                 outputs = self.model(input_ids=tokens_tensors, 
                                     token_type_ids=segments_tensors, 
                                     attention_mask=masks_tensors, 
-                                    labels=target).to(self.device)
-                
+                                    labels=target)
+                """
 
                 loss = outputs[0]
                 # backward
@@ -132,7 +137,7 @@ class BERT_Family(nn.Module):
 #Sequence Classification
 class BF_Classification(BERT_Family):
     def __init__(self, **kwargs) -> None:
-        print("asa")
+        print("asaa")
         super().__init__(**kwargs)
         self.labelLength = None
         self.status["BERT_Type"].append("BF_Classification")
@@ -179,16 +184,16 @@ class BF_Classification(BERT_Family):
             for df in tqdm(dataloader):
                 # 將所有 tensors 移到 GPU 上
                 
-                tmp = [t.to(self.device) for t in df if t is not None]
+                input = [t for t in df if t is not None]
                 
                 
                 # 別忘記前 3 個 tensors 分別為 tokens, segments 以及 masks
                 # 且強烈建議在將這些 tensors 丟入 `model` 時指定對應的參數名稱
-                tokens_tensors, segments_tensors, masks_tensors = tmp[0]["input_ids"].squeeze(1), tmp[0]["token_type_ids"].squeeze(1), tmp[0]["attention_mask"].squeeze(1)
-                label = tmp[1]
-                outputs = model(input_ids=tokens_tensors, 
-                                token_type_ids=segments_tensors, 
-                                attention_mask=masks_tensors).to(self.device)
+                #tokens_tensors, segments_tensors, masks_tensors = tmp[0]["input_ids"].squeeze(1), tmp[0]["token_type_ids"].squeeze(1), tmp[0]["attention_mask"].squeeze(1)
+                #label = tmp[1]
+                outputs = model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
+                                token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
+                                attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
                 
                 logits = outputs[0]
                 print(logits)
@@ -196,8 +201,8 @@ class BF_Classification(BERT_Family):
                 
                 # 用來計算訓練集的分類準確率
                 if compute_acc:
-                    total += label.size(0)
-                    correct += (pred == label).sum().item()
+                    total += input[1].size(0)
+                    correct += (pred == input[1]).sum().item()
                     
                 # 將當前 batch 記錄下來
                 if predictions is None:
@@ -216,8 +221,6 @@ class BF_Classification(BERT_Family):
     model = model.to(device)
     _, acc = get_predictions(model, trainloader, compute_acc=True)
     print("classification acc:", acc) """
-
-  
 
 
 class BF_QA(BERT_Family):
@@ -258,7 +261,7 @@ class testaaa(object):
         return a+b
 t = testaaa()
 torch.cuda.device_count()
-d
+
 import os
 os.getcwd()
 from zipfile import ZipFile
@@ -292,7 +295,7 @@ temp_t = df_train[['label']]
 temp_t = temp_t.values.squeeze()
 
 import random
-testSize = 1000
+testSize = 5000
 testIdx = random.sample(range(temp.shape[0]), testSize)
 
 psize = 100
@@ -303,16 +306,21 @@ y = temp_t[testIdx]
 testx = temp.iloc[pIdx]
 testy = temp_t[pIdx]
 c = BF_Classification(pretrainedModel = "bert-base-chinese", maxLength = 70)
-c.Set_Dataset(rawData = x, rawTarget = y, batchSize=100, shuffle=True)
+c.Set_Dataset(rawData = x, rawTarget = y, batchSize=200, shuffle=True)
 c.Create_Model(labelLength=c.labelLength)
 c.Show_Model_Architecture(); c.Show_Status()
 a = c.Training(1)
+
 
 os.system("echo %PYTORCH_CUDA_ALLOC_CONF%")
 
 import GPUtil
 from GPUtil import showUtilization as gpu_usage
+import gc
+kwargs = {'num_workers': 6, 'pin_memory': True} if torch.cuda.is_available() else {}
+gc.collect()
 
+torch.cuda.empty_cache()
 gpu_usage()
 a[1].shape
 a, b = c.Testing(model = c.model, testingData = testx, testingTarget = testy);b
