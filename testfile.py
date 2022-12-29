@@ -134,7 +134,7 @@ class BERT_Family(nn.Module):
         return loss
     
 
-#Sequence Classification
+#Sequence Classification 暫時好了
 class BF_Classification(BERT_Family):
     def __init__(self, **kwargs) -> None:
         print("asaa")
@@ -223,9 +223,11 @@ class BF_Classification(BERT_Family):
     print("classification acc:", acc) """
 
 
+#12/30測試one seq和two seq的問題是否都能做，接著開始實作QA類型問題或是多label問題
 class BF_QA(BERT_Family):
     def __init__(self) -> None:
         super().__init__()
+
 
 class Configurations(object):
   def __init__(self):
