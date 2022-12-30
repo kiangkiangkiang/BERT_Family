@@ -361,10 +361,17 @@ b.Show_Model_Architecture(); b.Show_Status()
 a = b.Training(1)
  """
 
-#news
+""" #news
 ##########in mac
 #dataDir = "~/Downloads/news.csv"
-df_train = pd.read_csv("BERT_Family/data/news/")
+from zipfile import ZipFile
+dataDir = "BERT_Family/data/news/news.zip"#in ubutn
+tmp = ZipFile(dataDir)
+from io import StringIO
+from zipfile import Path
+zipped = Path(dataDir, at="train.csv")
+df_train = pd.read_csv(StringIO(zipped.read_text()))
+
 ############
 
 
@@ -378,8 +385,9 @@ temp = df_train[['title1_zh', "title2_zh"]]
 temp_t = df_train[['label']]
 temp_t = temp_t.values.squeeze()
 
+
 import random
-testSize = 5000
+testSize = 100
 testIdx = random.sample(range(temp.shape[0]), testSize)
 
 psize = 100
@@ -389,11 +397,11 @@ x = temp.iloc[testIdx]
 y = temp_t[testIdx]
 testx = temp.iloc[pIdx]
 testy = temp_t[pIdx]
-c = BF_Classification(pretrainedModel = "bert-base-chinese", maxLength = 70)
-c.Set_Dataset(rawData = x, rawTarget = y, batchSize=200, shuffle=True)
-c.Create_Model(labelLength=c.labelLength)
-c.Show_Model_Architecture(); c.Show_Status()
-a = c.Training(1)
-
+b = BF_Classification(pretrainedModel = "bert-base-chinese", maxLength = 70)
+b.Set_Dataset(rawData = x, rawTarget = y, batchSize=100, shuffle=True)
+b.Create_Model(labelLength=b.labelLength)
+b.Show_Model_Architecture(); b.Show_Status()
+a = b.Training(1)
+"""
 
 ##############################test######################################
