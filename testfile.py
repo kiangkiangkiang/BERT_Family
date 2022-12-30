@@ -324,8 +324,32 @@ del myData
 
  """
 
+#MRPC 0.7386
 
- #CoLA -> OK
+from datasets import load_dataset
+dataset = load_dataset('glue', 'mrpc', split='train')
+dataset["sentence1"]
+df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
+df = df.transpose()
+target = dataset["label"]
+b = BF_Classification(pretrainedModel = "bert-base-uncased", maxLength = 50)
+b.Set_Dataset(df, target, batchSize=100, shuffle=True)
+b.Create_Model(b.labelLength)
+b.Show_Model_Architecture(); b.Show_Status()
+a = b.Training(5)
+
+#evaluation
+dataset = load_dataset('glue', 'mrpc', split='test')
+dataset["sentence1"]
+df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
+df = df.transpose()
+target = dataset["label"]
+pred, acc = b.Testing(b.model, df, target); acc
+
+
+
+
+"""  #CoLA -> OK, 0.83, epoch=10 (bert-base-uncased)
 #tmp = "data/glue_data/coLA/train.tsv"
 from zipfile import ZipFile, Path
 from io import StringIO
@@ -353,7 +377,9 @@ zipped = Path(dataDir, at="CoLA/test.tsv")
 d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
 target = d.iloc[:,1]
 df = d.iloc[:, 3]
-b.Testing(b.model, df, target)
+b.Testing(b.model, df, target) 
+"""
+
 """ #news -> OK
 ##########in mac
 #dataDir = "~/Downloads/news.csv"
