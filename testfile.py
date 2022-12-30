@@ -151,7 +151,7 @@ class BF_Classification(BERT_Family):
     def Forecasting(self):
         pass
 
-    def Testing(self, model, testingData, testingTarget, compute_acc=True, **kwargs):
+    def Testing(self, model, testingData, testingTarget, **kwargs):
         dataset = Classification_Dataset(rawData = testingData, rawTarget = testingTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
         dataloader = DataLoader(dataset, batch_size=self.batchSize, **kwargs)
         predictions = None
@@ -164,6 +164,7 @@ class BF_Classification(BERT_Family):
                 outputs = model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
                                 token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
                                 attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
+                input[1] = input[1].to(self.device)
                 
                 logits = outputs[0]
                 print(logits)
@@ -324,18 +325,35 @@ del myData
  """
 
 
-""" #CoLA -> OK
-tmp = "data/glue_data/coLA/train.tsv"
-d = pd.read_csv(tmp, sep="\t")
-target = d.iloc[:100,1]
-df = d.iloc[:100, 3]
+ #CoLA -> OK
+#tmp = "data/glue_data/coLA/train.tsv"
+from zipfile import ZipFile, Path
+from io import StringIO
+dataDir = "/home/ubuntu/work/BERT_Family/data/CoLA.zip"
+zipped = Path(dataDir, at="CoLA/train.tsv")
+d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
+target = d.iloc[:,1]
+df = d.iloc[:, 3]
 b = BF_Classification(pretrainedModel = "bert-base-uncased", maxLength = 50)
 b.Set_Dataset(df, target, batchSize=100, shuffle=True)
 b.Create_Model(b.labelLength)
 b.Show_Model_Architecture(); b.Show_Status()
-a = b.Training(1)
- """
+a = b.Training(10)
 
+#evaluation
+zipped = Path(dataDir, at="CoLA/dev.tsv")
+d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
+target = d.iloc[:,1]
+df = d.iloc[:, 3]
+pred, acc = b.Testing(b.model, df, target)
+63
+
+#testing
+zipped = Path(dataDir, at="CoLA/test.tsv")
+d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
+target = d.iloc[:,1]
+df = d.iloc[:, 3]
+b.Testing(b.model, df, target)
 """ #news -> OK
 ##########in mac
 #dataDir = "~/Downloads/news.csv"
@@ -380,7 +398,7 @@ a = b.Training(1)
 """
 
 
-# QA
+""" # QA
 
 tmp = "BERT_Family/data/QA_data/"
 df_train = pd.read_json(tmp)
@@ -506,3 +524,4 @@ test_loader = DataLoader(test_set, batch_size=1, shuffle=False, pin_memory=True)
 len(myData["paragraphs"])
 
 ##############################test######################################
+ """
