@@ -133,7 +133,6 @@ class BERT_Family(nn.Module):
             self.status["accumulateEpoch"] += 1
         return loss
     
-
 #Sequence Classification 暫時好了
 class BF_Classification(BERT_Family):
     def __init__(self, **kwargs) -> None:
@@ -222,12 +221,10 @@ class BF_Classification(BERT_Family):
     _, acc = get_predictions(model, trainloader, compute_acc=True)
     print("classification acc:", acc) """
 
-
-#12/30測試one seq和two seq的問題是否都能做，接著開始實作QA類型問題或是多label問題
+#12/30測試one seq和two seq的問題是否都能做，接著開始實作QA類型問題或是多label問題，最後實作視覺化function -> 結束
 class BF_QA(BERT_Family):
     def __init__(self) -> None:
         super().__init__()
-
 
 class Configurations(object):
   def __init__(self):
