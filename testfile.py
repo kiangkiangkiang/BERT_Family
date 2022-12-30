@@ -1,12 +1,10 @@
 import torch.nn as nn
-import torch.utils.data as data
+from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import torch
-from torchtext import datasets
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 import pandas as pd
 from transformers import BertForSequenceClassification
-from functools import reduce
 #from accelerate import 
 from tqdm.auto import tqdm
 
@@ -14,7 +12,7 @@ from tqdm.auto import tqdm
 ########## Modules ##########
 #不想export出去的
 #One or two sentence with one dim label
-class Classification_Dataset(data.Dataset):
+class Classification_Dataset(Dataset):
     def __init__(self, rawData, rawTarget, tokenizer, maxLength = 100) -> None:
         super().__init__()
         print("123")
@@ -45,7 +43,7 @@ class BERT_Family(nn.Module):
         print("Using device: ", device)
         self.device = device
         self.pretrainedModel = pretrainedModel
-        self.tokenizer = BertTokenizer.from_pretrained(pretrainedModel)
+        self.tokenizer = BertTokenizerFast.from_pretrained(pretrainedModel)
         self.maxLength = maxLength
         self.dataset, self.dataLoader = None, None
         self.model, self.iteration, self.batchSize = None, 0, 100
@@ -111,15 +109,11 @@ class BERT_Family(nn.Module):
                 optimizer.step()
                 running_loss += loss.item()
                 self.status["accumulateIteration"] += 1
-            # 計算分類準確率
-            #_, acc = get_predictions(model, trainloader, compute_acc=True)
-            
-
             print('[epoch %d] loss: %.3f' %(epoch + 1, running_loss))
             self.status["accumulateEpoch"] += 1
         return loss
     
-#Sequence Classification 暫時好了
+#Sequence Classification
 class BF_Classification(BERT_Family):
     def __init__(self, **kwargs) -> None:
         print("a")
@@ -138,7 +132,7 @@ class BF_Classification(BERT_Family):
         dataset, dataloader, dataloader with iter
         """
         self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
-        self.dataLoader = data.DataLoader(self.dataset, batch_size=self.batchSize, **kwargs)
+        self.dataLoader = DataLoader(self.dataset, batch_size=self.batchSize, **kwargs)
         #self.dataIter = self._Infinite_Iter(self.dataLoader)
 
         self.batchSize = batchSize
@@ -159,21 +153,14 @@ class BF_Classification(BERT_Family):
 
     def Testing(self, model, testingData, testingTarget, compute_acc=True, **kwargs):
         dataset = Classification_Dataset(rawData = testingData, rawTarget = testingTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
-        dataloader = data.DataLoader(dataset, batch_size=self.batchSize, **kwargs)
+        dataloader = DataLoader(dataset, batch_size=self.batchSize, **kwargs)
         predictions = None
         correct = 0
         total = 0
         tmp = None
         with torch.no_grad():
-            # 遍巡整個資料集
-            for df in tqdm(dataloader):
-                # 將所有 tensors 移到 GPU 上
-                
+            for df in tqdm(dataloader):                
                 input = [t for t in df if t is not None]        
-                # 別忘記前 3 個 tensors 分別為 tokens, segments 以及 masks
-                # 且強烈建議在將這些 tensors 丟入 `model` 時指定對應的參數名稱
-                #tokens_tensors, segments_tensors, masks_tensors = tmp[0]["input_ids"].squeeze(1), tmp[0]["token_type_ids"].squeeze(1), tmp[0]["attention_mask"].squeeze(1)
-                #label = tmp[1]
                 outputs = model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
                                 token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
                                 attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
@@ -182,21 +169,15 @@ class BF_Classification(BERT_Family):
                 print(logits)
                 _, pred = torch.max(logits.data, 1)
                 
-                # 用來計算訓練集的分類準確率
-                if compute_acc:
-                    total += input[1].size(0)
-                    correct += (pred == input[1]).sum().item()
+                total += input[1].size(0)
+                correct += (pred == input[1]).sum().item()
                     
-                # 將當前 batch 記錄下來
                 if predictions is None:
                     predictions = pred
                 else:
                     predictions = torch.cat((predictions, pred))
-        
-        if compute_acc:
-            acc = correct / total
-            return predictions, acc
-        return predictions
+        acc = correct / total
+        return predictions, acc
        
     """ # 讓模型跑在 GPU 上並取得訓練集的分類準確率
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -205,18 +186,12 @@ class BF_Classification(BERT_Family):
     _, acc = get_predictions(model, trainloader, compute_acc=True)
     print("classification acc:", acc) """
 
-#12/30測試one seq和two seq的問題是否都能做，接著開始實作QA類型問題或是多label問題，最後實作視覺化function -> 結束
+#
 class BF_QA(BERT_Family):
     def __init__(self) -> None:
         super().__init__()
+        self.status["BERT_Type"].append("BF_QA")
 
-class Configurations(object):
-  def __init__(self):
-    self.batch_size = 64
-    self.linear_hidden_layer = 5
-    self.epoch = 10000
-    self.learning_rate = 0.0001
-    self.BF_MaxLength = 30
 
 
 def Auto_Build_Model(data = None, target = None, pretrainedModel = None, **kwargs):
@@ -361,7 +336,7 @@ b.Show_Model_Architecture(); b.Show_Status()
 a = b.Training(1)
  """
 
-""" #news
+""" #news -> OK
 ##########in mac
 #dataDir = "~/Downloads/news.csv"
 from zipfile import ZipFile
@@ -403,5 +378,131 @@ b.Create_Model(labelLength=b.labelLength)
 b.Show_Model_Architecture(); b.Show_Status()
 a = b.Training(1)
 """
+
+
+# QA
+
+tmp = "BERT_Family/data/QA_data/"
+df_train = pd.read_json(tmp)
+import json
+myData = 0
+with open(tmp, 'r', encoding="utf-8") as reader:
+    myData = json.load(reader)
+
+def read_data(file):
+    with open(file, 'r', encoding="utf-8") as reader:
+        data = json.load(reader)
+    return data["questions"], data["paragraphs"]
+train_questions, train_paragraphs = read_data(tmp + "hw7_train.json")
+dev_questions, dev_paragraphs = read_data(tmp + "hw7_dev.json")
+test_questions, test_paragraphs = read_data(tmp + "hw7_test.json")
+
+tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
+train_questions_tokenized = tokenizer([train_question["question_text"] for train_question in train_questions], add_special_tokens=False)
+dev_questions_tokenized = tokenizer([dev_question["question_text"] for dev_question in dev_questions], add_special_tokens=False)
+test_questions_tokenized = tokenizer([test_question["question_text"] for test_question in test_questions], add_special_tokens=False) 
+
+
+train_paragraphs_tokenized = tokenizer(train_paragraphs, add_special_tokens=False)
+dev_paragraphs_tokenized = tokenizer(dev_paragraphs, add_special_tokens=False)
+test_paragraphs_tokenized = tokenizer(test_paragraphs, add_special_tokens=False)
+
+
+
+class QA_Dataset(Dataset):
+    def __init__(self, split, questions, tokenized_questions, tokenized_paragraphs):
+        self.split = split
+        self.questions = questions
+        self.tokenized_questions = tokenized_questions
+        self.tokenized_paragraphs = tokenized_paragraphs
+        self.max_question_len = 40
+        self.max_paragraph_len = 150
+        
+        ##### TODO: Change value of doc_stride #####
+        self.doc_stride = 150
+
+        # Input sequence length = [CLS] + question + [SEP] + paragraph + [SEP]
+        self.max_seq_len = 1 + self.max_question_len + 1 + self.max_paragraph_len + 1
+
+    def __len__(self):
+        return len(self.questions)
+
+    def __getitem__(self, idx):
+        question = self.questions[idx]
+        tokenized_question = self.tokenized_questions[idx]
+        tokenized_paragraph = self.tokenized_paragraphs[question["paragraph_id"]]
+
+        ##### TODO: Preprocessing #####
+        # Hint: How to prevent model from learning something it should not learn
+
+        if self.split == "train":
+            # Convert answer's start/end positions in paragraph_text to start/end positions in tokenized_paragraph  
+            answer_start_token = tokenized_paragraph.char_to_token(question["answer_start"])
+            answer_end_token = tokenized_paragraph.char_to_token(question["answer_end"])
+
+            # A single window is obtained by slicing the portion of paragraph containing the answer
+            mid = (answer_start_token + answer_end_token) // 2
+            paragraph_start = max(0, min(mid - self.max_paragraph_len // 2, len(tokenized_paragraph) - self.max_paragraph_len))
+            paragraph_end = paragraph_start + self.max_paragraph_len
+            
+            # Slice question/paragraph and add special tokens (101: CLS, 102: SEP)
+            input_ids_question = [101] + tokenized_question.ids[:self.max_question_len] + [102] 
+            input_ids_paragraph = tokenized_paragraph.ids[paragraph_start : paragraph_end] + [102]		
+            
+            # Convert answer's start/end positions in tokenized_paragraph to start/end positions in the window  
+            answer_start_token += len(input_ids_question) - paragraph_start
+            answer_end_token += len(input_ids_question) - paragraph_start
+            
+            # Pad sequence and obtain inputs to model 
+            input_ids, token_type_ids, attention_mask = self.padding(input_ids_question, input_ids_paragraph)
+            return torch.tensor(input_ids), torch.tensor(token_type_ids), torch.tensor(attention_mask), answer_start_token, answer_end_token
+
+        # Validation/Testing
+        else:
+            input_ids_list, token_type_ids_list, attention_mask_list = [], [], []
+            
+            # Paragraph is split into several windows, each with start positions separated by step "doc_stride"
+            for i in range(0, len(tokenized_paragraph), self.doc_stride):
+                
+                # Slice question/paragraph and add special tokens (101: CLS, 102: SEP)
+                input_ids_question = [101] + tokenized_question.ids[:self.max_question_len] + [102]
+                input_ids_paragraph = tokenized_paragraph.ids[i : i + self.max_paragraph_len] + [102]
+                
+                # Pad sequence and obtain inputs to model
+                input_ids, token_type_ids, attention_mask = self.padding(input_ids_question, input_ids_paragraph)
+                
+                input_ids_list.append(input_ids)
+                token_type_ids_list.append(token_type_ids)
+                attention_mask_list.append(attention_mask)
+            
+            return torch.tensor(input_ids_list), torch.tensor(token_type_ids_list), torch.tensor(attention_mask_list)
+
+    def padding(self, input_ids_question, input_ids_paragraph):
+        # Pad zeros if sequence length is shorter than max_seq_len
+        padding_len = self.max_seq_len - len(input_ids_question) - len(input_ids_paragraph)
+        # Indices of input sequence tokens in the vocabulary
+        input_ids = input_ids_question + input_ids_paragraph + [0] * padding_len
+        # Segment token indices to indicate first and second portions of the inputs. Indices are selected in [0, 1]
+        token_type_ids = [0] * len(input_ids_question) + [1] * len(input_ids_paragraph) + [0] * padding_len
+        # Mask to avoid performing attention on padding token indices. Mask values selected in [0, 1]
+        attention_mask = [1] * (len(input_ids_question) + len(input_ids_paragraph)) + [0] * padding_len
+        
+        return input_ids, token_type_ids, attention_mask
+train_questions[1]
+train_questions_tokenized[1]
+train_paragraphs_tokenized[1]
+train_set = QA_Dataset("train", train_questions, train_questions_tokenized, train_paragraphs_tokenized)
+dev_set = QA_Dataset("dev", dev_questions, dev_questions_tokenized, dev_paragraphs_tokenized)
+test_set = QA_Dataset("test", test_questions, test_questions_tokenized, test_paragraphs_tokenized)
+
+train_batch_size = 32
+
+# Note: Do NOT change batch size of dev_loader / test_loader !
+# Although batch size=1, it is actually a batch consisting of several windows from the same QA pair
+train_loader = DataLoader(train_set, batch_size=train_batch_size, shuffle=True, pin_memory=True)
+dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, pin_memory=True)
+test_loader = DataLoader(test_set, batch_size=1, shuffle=False, pin_memory=True)
+
+len(myData["paragraphs"])
 
 ##############################test######################################
