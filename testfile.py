@@ -10,7 +10,6 @@ from tqdm.auto import tqdm
 import json
 
 ########## Modules ##########
-#不想export出去的
 #One or two sentence with one dim label
 class Classification_Dataset(Dataset):
     def __init__(self, rawData, tokenizer, rawTarget = None, maxLength = 100) -> None:
