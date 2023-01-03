@@ -206,12 +206,14 @@ class BF_QA(BERT_Family):
     def Set_Dataset(self, questionsDic: dict, paragraphsList: list, tokenizer = None, dataType = "train", batchSize = 100, **kwargs):
         assert self.__Test_Data_Valid(questionsDic, paragraphsList)
         if tokenizer is None: tokenizer = self.tokenizer
+        if dataType in ["test", "dev"]: batchSize = 1
+
         tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
         questionsTokenized = tokenizer([q["question_text"] for q in questionsDic], add_special_tokens=False)
         paragraphsTokenized = tokenizer(paragraphsList, add_special_tokens=False)
         tmpDataset = QA_Dataset(dataType, questionsDic, questionsTokenized, paragraphsTokenized)
-        if dataType not in ["train", "test", "dev"]: return DataLoader(tmpDataset, batch_size=batchSize, shuffle=True, pin_memory=True, **kwargs)
 
+        if dataType not in ["train", "test", "dev"]: return DataLoader(tmpDataset, batch_size=batchSize, shuffle=True, pin_memory=True, **kwargs)
         exec("self." + dataType + "DataLoader" + " = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)")
         self.batchSize = batchSize
         self.status["hasData"] = True
@@ -239,14 +241,14 @@ class BF_QA(BERT_Family):
 
 
 class QA_Dataset(Dataset):
-    def __init__(self, dataType, questions, tokenizedQuestions, tokenizedParagraphs, maxQuestionLen = 40, maxParagraphLen = 150, windowSize = 150):
+    def __init__(self, dataType, questions, tokenizedQuestions, tokenizedParagraphs, maxQuestionLen = 40, maxParagraphLen = 150, stride = 80):
         self.dataType = dataType
         self.questions = questions
         self.tokenizedQuestions = tokenizedQuestions
         self.tokenizedParagraphs = tokenizedParagraphs
         self.maxQuestionLen = maxQuestionLen
         self.maxParagraphLen = maxParagraphLen
-        self.windowSize = windowSize
+        self.stride = stride
         # Input sequence length = [CLS] + question + [SEP] + paragraph + [SEP]
         self.maxSeqLen = 1 + self.maxQuestionLen + 1 + self.maxParagraphLen + 1
 
@@ -259,7 +261,21 @@ class QA_Dataset(Dataset):
         question = self.questions[idx]
         tokenizedQuestion = self.tokenizedQuestions[idx]
         tokenizedParagraph = self.tokenizedParagraphs[question["paragraph_id"]]
-        if self.dataType == "train":
+        if self.dataType in ["test", "dev"]:
+            inputIdsList, tokenTypeIdsList, attentionMaskList = [], [], []
+            #Split paragraph into several windows
+            for i in range(0, len(tokenizedParagraph), self.stride):
+                # Slice question/paragraph and add special tokens (101: CLS, 102: SEP)
+                inputIdsQuestion = [101] + tokenizedQuestion.ids[:self.maxQuestionLen] + [102]
+                inputIdsParagraph = tokenizedParagraph.ids[i : i + self.maxParagraphLen] + [102]
+                
+                # Pad sequence and obtain inputs to model
+                inputIds, tokenTypeIds, attentionMask = Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen = self.maxSeqLen)
+                inputIdsList.append(inputIds)
+                tokenTypeIdsList.append(tokenTypeIds)
+                attentionMaskList.append(attentionMask)
+            return torch.tensor(inputIdsList), torch.tensor(tokenTypeIdsList), torch.tensor(attentionMaskList)
+        else:
             # Convert answer's start/end positions in paragraph_text to start/end positions in tokenizedParagraph  
             ansStartToken = tokenizedParagraph.char_to_token(question["answer_start"])
             ansEndToken = tokenizedParagraph.char_to_token(question["answer_end"])
@@ -277,22 +293,8 @@ class QA_Dataset(Dataset):
 
             inputIds, tokenTypeIds, attentionMask = Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen = self.maxSeqLen)
             return torch.tensor(inputIds), torch.tensor(tokenTypeIds), torch.tensor(attentionMask), ansStartToken, ansEndToken
-        else:
-            inputIdsList, tokenTypeIdsList, attentionMaskList = [], [], []
-            #Split paragraph into several windows
-            for i in range(0, len(tokenizedParagraph), self.windowSize):
-                # Slice question/paragraph and add special tokens (101: CLS, 102: SEP)
-                inputIdsQuestion = [101] + tokenizedQuestion.ids[:self.maxQuestionLen] + [102]
-                inputIdsParagraph = tokenizedParagraph.ids[i : i + self.maxParagraphLen] + [102]
-                
-                # Pad sequence and obtain inputs to model
-                inputIds, tokenTypeIds, attentionMask = Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen = self.maxSeqLen)
-                inputIdsList.append(inputIds)
-                tokenTypeIdsList.append(tokenTypeIds)
-                attentionMaskList.append(attentionMask)
-            return torch.tensor(inputIdsList), torch.tensor(tokenTypeIdsList), torch.tensor(attentionMaskList)
 
-
+            
 def Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen):
     paddingLen = maxSeqLen - len(inputIdsQuestion) - len(inputIdsParagraph)
     inputIds = inputIdsQuestion + inputIdsParagraph + [0] * paddingLen
@@ -626,8 +628,7 @@ test_set = QA_Dataset("test", test_questions, test_questions_tokenized, test_par
  """
 b = BF_QA(pretrainedModel = "bert-base-chinese")
 b.Set_Dataset(train_questions, train_paragraphs, dataType = "train", batchSize=100, shuffle=True, pin_memory=True)
-tmp_iter = Infinite_Iter(b.trainDataLoader)
-next(tmp_iter)
+
 
 # Note: Do NOT change batch size of dev_loader / test_loader !
 # Although batch size=1, it is actually a batch consisting of several windows from the same QA pair
