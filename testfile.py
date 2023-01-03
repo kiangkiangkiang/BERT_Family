@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch
 from transformers import BertTokenizerFast
 import pandas as pd
-from transformers import BertForSequenceClassification
+from transformers import BertForSequenceClassification, BertForQuestionAnswering
 #from accelerate import 
 from tqdm.auto import tqdm
 import json
@@ -161,6 +161,7 @@ class BF_Classification(BERT_Family):
         outputs = None
 
         self.model.train()
+        print("Start Training ...")
         for epoch in range(epochs):
             total, correct, running_loss = 0, 0, 0
             for df in tqdm(trainDataLoader):
@@ -176,7 +177,6 @@ class BF_Classification(BERT_Family):
                 _, pred = torch.max(outputs[1], 1)
                 total += input[1].size(0)
                 correct += (pred == input[1]).sum().item()
-                self.status["accumulateIteration"] += 1
 
             if eval & (devDataLoader is not None):
                 self.model.eval()
@@ -195,8 +195,12 @@ class BF_QA(BERT_Family):
         self.status["BERT_Type"].append("BF_QA")
 
     
-    def Create_Model(self, labelLength:int, pretrainedModel = None, **kwargs):
-        pass
+    def Create_Model(self, pretrainedModel = None, **kwargs):
+        self.status["hasModel"] = True
+        if not pretrainedModel: pretrainedModel = self.pretrainedModel
+        self.model = BertForQuestionAnswering.from_pretrained(pretrainedModel, **kwargs).to(self.device)   
+        #這裡再新增多一點東西 roberta
+        return self.model
             
 
     def Translate(self):
@@ -219,13 +223,51 @@ class BF_QA(BERT_Family):
         self.status["hasData"] = True
 
 
-    def Training(self, trainDataLoader, devDataLoader = None, epochs = 50, optimizer = None, eval = False):
+    def Testing(self, model, data, output, tokenizer, eval = False):
+        # There is a bug and room for improvement in postprocessing 
+        # Hint: Open your prediction file to see what is wrong    
+        answer = ''
+        max_prob = float('-inf')
+        num_of_windows = data[0].shape[1]
+        for k in range(num_of_windows):
+            start_prob, start_index = torch.max(output.start_logits[k], dim=0)
+            end_prob, end_index = torch.max(output.end_logits[k], dim=0)
+            prob = start_prob + end_prob
+            
+            # Replace answer if calculated probability is larger than previous windows
+            if prob > max_prob:
+                max_prob = prob
+                # Convert tokens to chars (e.g. [1920, 7032] --> "大 金")
+                answer = tokenizer.decode(data[0][0][k][start_index : end_index + 1])
+        return answer.replace(' ','')
+
+
+    def Training(self, trainDataLoader, devDataLoader = None, epochs = 50, optimizer = None, eval = False, logging_step = 100):
         #這裡要補checkpoint
-        pass
+        assert self.status["hasModel"], "No model in the BERT_Family object."
+        logging_step = logging_step
+        if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+        self.status["isTrained"] = True
+        output = None
 
+        self.model.train()
+        print("Start Training ...")
+        for epoch in range(epochs):
+            running_loss = train_acc = 0
+            for data in tqdm(trainDataLoader):	
+                optimizer.zero_grad()
+                data = [i.to(self.device) for i in data]
+                output = self.model(input_ids=data[0], token_type_ids=data[1], attention_mask=data[2], start_positions=data[3], end_positions=data[4])
+                start_index = torch.argmax(output.start_logits, dim=1)
+                end_index = torch.argmax(output.end_logits, dim=1)
+                
+                train_acc += ((start_index == data[3]) & (end_index == data[4])).float().mean()
+                running_loss += output.loss
 
-    def Testing(self, model, dataLoader, eval = False, **kwargs):
-        pass
+                output.loss.backward()
+                optimizer.step()
+            print('[epoch %d] loss: %.3f, ACC: %.3f' %(epoch + 1, running_loss, train_acc))
+            self.status["accumulateEpoch"] += 1
 
 
     def __Test_Data_Valid(self, questionsDic: dict, paragraphsList: list, detectNum = 10) -> bool:
@@ -600,18 +642,35 @@ a = b.Training(1)
 
 
 # QA
-tmp = "BERT_Family/data/QA_data/"
+from zipfile import ZipFile, Path
+from io import StringIO
+dataDir = "BERT_Family/data/QA_data.zip"
+#dataDir = "/home/ubuntu/work/BERT_Family/data/QA_data.zip"
+zipped = Path(dataDir, at="QA_data/" + "hw7_train.json")
 
 
+def read_data(zipped):
+    with open(zipped.read_text(), 'r', encoding="utf-8") as reader:
+        data = json.load(reader)
+    return data["questions"], data["paragraphs"]
+
+#d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
+#tmp = "BERT_Family/data/QA_data/"
+""" 
 def read_data(file):
     with open(file, 'r', encoding="utf-8") as reader:
         data = json.load(reader)
     return data["questions"], data["paragraphs"]
+ """
+zipped = Path(dataDir, at="QA_data/" + "hw7_train.json")
+train_questions, train_paragraphs = read_data(zipped)
 
+zipped = Path(dataDir, at="QA_data/" + "hw7_dev.json")
+dev_questions, dev_paragraphs = read_data(zipped)
 
-train_questions, train_paragraphs = read_data(tmp + "hw7_train.json")
-dev_questions, dev_paragraphs = read_data(tmp + "hw7_dev.json")
-test_questions, test_paragraphs = read_data(tmp + "hw7_test.json")
+zipped = Path(dataDir, at="QA_data/" + "hw7_test.json")
+test_questions, test_paragraphs = read_data(zipped)
+
 """ 
 tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
 train_questions_tokenized = tokenizer([train_question["question_text"] for train_question in train_questions], add_special_tokens=False)
@@ -628,15 +687,15 @@ test_set = QA_Dataset("test", test_questions, test_questions_tokenized, test_par
  """
 b = BF_QA(pretrainedModel = "bert-base-chinese")
 b.Set_Dataset(train_questions, train_paragraphs, dataType = "train", batchSize=100, shuffle=True, pin_memory=True)
-
-
+b.Create_Model()
+b.Show_Model_Architecture(); b.Show_Status()
+b.Training(trainDataLoader = b.trainDataLoader, epochs = 2)
 # Note: Do NOT change batch size of dev_loader / test_loader !
 # Although batch size=1, it is actually a batch consisting of several windows from the same QA pair
 """ train_loader = DataLoader(train_set, batch_size=train_batch_size, shuffle=True, pin_memory=True)
 dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, pin_memory=True)
 test_loader = DataLoader(test_set, batch_size=1, shuffle=False, pin_memory=True)
  """
-
 
 
 
