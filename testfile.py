@@ -13,17 +13,18 @@ from tqdm.auto import tqdm
 #不想export出去的
 #One or two sentence with one dim label
 class Classification_Dataset(Dataset):
-    def __init__(self, rawData, rawTarget, tokenizer, maxLength = 100) -> None:
+    def __init__(self, rawData, tokenizer, rawTarget = None, maxLength = 100) -> None:
         super().__init__()
-        print("123")
         self.tokenizer = tokenizer
         self.rawData, self.rawTarget = pd.DataFrame(rawData), rawTarget
+        self.maxLength = maxLength
         assert self.rawData.shape[1] <= 2, "Only accept one or two sequences as the input argument."
 
-        self.rawTarget_dict = {}
-        for i, ele in enumerate(pd.unique(rawTarget)):
-            self.rawTarget_dict[ele] = i
-        self.maxLength = maxLength
+        if rawTarget is not None:
+            self.rawTarget_dict = {}
+            for i, ele in enumerate(pd.unique(rawTarget)):
+                self.rawTarget_dict[ele] = i
+        
 
     def __len__(self):
         return self.rawData.shape[0]
@@ -33,9 +34,8 @@ class Classification_Dataset(Dataset):
             result = self.tokenizer.encode_plus(self.rawData.iloc[idx, 0], self.rawData.iloc[idx, 1], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
         else:
             result = self.tokenizer.encode_plus(self.rawData.iloc[idx, 0], padding="max_length", max_length=self.maxLength, truncation = True, return_tensors = 'pt')
-        return result, torch.tensor(self.rawTarget_dict[self.rawTarget[idx]])
+        return result, torch.tensor(self.rawTarget_dict[self.rawTarget[idx]]) if self.rawTarget is not None else result
 
-#這個class我想做一個比較客製化的？
 class BERT_Family(nn.Module):
     def __init__(self, pretrainedModel = 'bert-base-uncased', maxLength = 100,\
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")) -> None:
@@ -45,7 +45,7 @@ class BERT_Family(nn.Module):
         self.pretrainedModel = pretrainedModel
         self.tokenizer = BertTokenizerFast.from_pretrained(pretrainedModel)
         self.maxLength = maxLength
-        self.dataset, self.dataLoader = None, None
+        self.trainDataLoader, self.devDataLoader, self.testDataLoader =  None, None, None
         self.model, self.iteration, self.batchSize = None, 0, 100
         #self. = ()
         self.status = {"BERT_Type": ["BERT_Family"],\
@@ -81,37 +81,6 @@ class BERT_Family(nn.Module):
     def Show_Status(self) -> None:
         print("\n".join("{}\t{}".format(k, v) for k, v in self.status.items()))  
 
-    def Training(self, epochs = 50, optimizer = None):
-        assert self.status["hasModel"], "No model in the BERT_Family object."
-        if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
-        self.status["isTrained"] = True
-        self.model.train()
-        print("start2")
-        #start train
-        for epoch in range(epochs):
-            for df in tqdm(self.dataLoader):
-
-                running_loss = 0.0
-                input = [t for t in df if t is not None]
-                optimizer.zero_grad()
-                
-                # forward pass
-                outputs = self.model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
-                                token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
-                                attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device), 
-                                labels = input[1].to(self.device))
-                
-                #outputs = self.model(**input[0].to(self.device), labels = input[1].to(self.device))
-                loss = outputs[0]
-                # backward
-                loss.backward()
-                #self..backward(loss)
-                optimizer.step()
-                running_loss += loss.item()
-                self.status["accumulateIteration"] += 1
-            print('[epoch %d] loss: %.3f' %(epoch + 1, running_loss))
-            self.status["accumulateEpoch"] += 1
-        return loss
     
 #Sequence Classification
 class BF_Classification(BERT_Family):
@@ -121,24 +90,26 @@ class BF_Classification(BERT_Family):
         self.labelLength = None
         self.status["BERT_Type"].append("BF_Classification")
 
-    def Set_Dataset(self, rawData, rawTarget, batchSize = 100, **kwargs):
+    def Set_Dataset(self, rawData, rawTarget, dataType = "train", batchSize = 100, **kwargs):
         """ 
         Input:
         rawData: n by p, n: observations (total sequence). p: number of sequences in each case.
         rawTarget: a list of n-length.
+        type: train, dev, test, other
         **kwargs: The argument in DataLoader
 
         Return 3 object:
         dataset, dataloader, dataloader with iter
-        """
-        self.dataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
-        self.dataLoader = DataLoader(self.dataset, batch_size=self.batchSize, **kwargs)
+        """ 
+        tmpDataset = Classification_Dataset(rawData = rawData, rawTarget = rawTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
+        if dataType not in ["train", "test", "dev"]: return DataLoader(tmpDataset, batch_size=batchSize, **kwargs)
+        exec("self." + dataType + "DataLoader" + " = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)")
         #self.dataIter = self._Infinite_Iter(self.dataLoader)
 
         self.batchSize = batchSize
         self.status["hasData"] = True
         self.iteration = int(rawData.shape[0] / batchSize)
-        self.labelLength = len(self.dataset.rawTarget_dict)
+        self.labelLength = len(tmpDataset.rawTarget_dict)
         
 
     def Create_Model(self, labelLength, pretrainedModel = None, **kwargs) -> None:
@@ -148,27 +119,39 @@ class BF_Classification(BERT_Family):
         self.model = BertForSequenceClassification.from_pretrained(pretrainedModel, num_labels = labelLength, **kwargs).to(self.device)   
         #return self.model
     
-    def Forecasting(self):
-        pass
-
-    def Testing(self, model, testingData, testingTarget, **kwargs):
-        dataset = Classification_Dataset(rawData = testingData, rawTarget = testingTarget, tokenizer = self.tokenizer, maxLength = self.maxLength)
-        dataloader = DataLoader(dataset, batch_size=self.batchSize, **kwargs)
+    def Forecasting(self, data, model, batchSize = 100, **kwargs):
+        tmpDataset = Classification_Dataset(rawData = data, tokenizer = self.tokenizer, maxLength = self.maxLength)
+        dataLoader = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)
         predictions = None
-        correct = 0
-        total = 0
-        tmp = None
         with torch.no_grad():
-            for df in tqdm(dataloader):                
+            for df in dataLoader if eval else tqdm(dataLoader):                
                 input = [t for t in df if t is not None]        
                 outputs = model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
                                 token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
                                 attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
-                input[1] = input[1].to(self.device)
-                
-                logits = outputs[0]
-                print(logits)
-                _, pred = torch.max(logits.data, 1)
+
+                _, pred = torch.max(outputs[0].data, 1)
+                    
+                if predictions is None:
+                    predictions = pred
+                else:
+                    predictions = torch.cat((predictions, pred))
+        return predictions
+
+    def Testing(self, model, dataLoader, eval = False, **kwargs):
+        predictions = None
+        total, correct = 0, 0
+        with torch.no_grad():
+            loss = 0
+            for df in dataLoader if eval else tqdm(dataLoader):                
+                input = [t for t in df if t is not None]        
+                outputs = model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
+                                token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
+                                attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device), 
+                                labels = input[1].to(self.device))
+
+                loss += outputs[0].item()
+                _, pred = torch.max(outputs[1], 1)
                 
                 total += input[1].size(0)
                 correct += (pred == input[1]).sum().item()
@@ -178,8 +161,48 @@ class BF_Classification(BERT_Family):
                 else:
                     predictions = torch.cat((predictions, pred))
         acc = correct / total
-        return predictions, acc
+        return predictions, acc, loss
        
+    def Training(self, trainDataLoader, devDataLoader = None, epochs = 50, optimizer = None, eval = False):
+        assert self.status["hasModel"], "No model in the BERT_Family object."
+        if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+        self.status["isTrained"] = True
+        self.model.train()
+        #start train
+        for epoch in range(epochs):
+            total, correct, running_loss = 0, 0, 0
+            for df in tqdm(trainDataLoader):
+                input = [t for t in df if t is not None]
+                optimizer.zero_grad()
+                
+                # forward pass
+                outputs = self.model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
+                                token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
+                                attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device), 
+                                labels = input[1].to(self.device))
+                
+                loss = outputs[0]
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item()
+
+                #acc
+                _, pred = torch.max(outputs[1], 1)
+                total += input[1].size(0)
+                correct += (pred == input[1]).sum().item()
+
+                self.status["accumulateIteration"] += 1
+            #eval
+            if eval & (devDataLoader is not None):
+                self.model.eval()
+                _, evalAcc, evalLoss = self.Testing(self.model, devDataLoader, eval = True)
+                self.model.train()
+                print('[epoch %d] loss: %.3f, TrainACC: %.3f, EvalACC: %.3f, EvalLoss: %.3f' %(epoch + 1, running_loss, correct/total, evalAcc, evalLoss))
+            else:
+                print('[epoch %d] loss: %.3f, ACC: %.3f' %(epoch + 1, running_loss, correct/total))
+            self.status["accumulateEpoch"] += 1
+        return loss
+    
     """ # 讓模型跑在 GPU 上並取得訓練集的分類準確率
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("device:", device)
@@ -187,19 +210,24 @@ class BF_Classification(BERT_Family):
     _, acc = get_predictions(model, trainloader, compute_acc=True)
     print("classification acc:", acc) """
 
-#
-class BF_QA(BERT_Family):
-    def __init__(self) -> None:
-        super().__init__()
-        self.status["BERT_Type"].append("BF_QA")
-
-
 
 def Auto_Build_Model(data = None, target = None, pretrainedModel = None, **kwargs):
     if not pretrainedModel:
         #prepare pretrainedModel
         pass
     pass
+
+#
+class BF_QA(BERT_Family):
+    def __init__(self) -> None:
+        super().__init__()
+        self.status["BERT_Type"].append("BF_QA")
+        self.Develop_Status()
+    def Develop_Status(self) -> None:
+        print("Cannot find a general way to summary all of the QA question datasets.")
+
+
+
 #build customize model                 
          
 #dataset / dataloader
@@ -324,7 +352,56 @@ del myData
 
  """
 
-#MRPC 0.7386
+#test
+from datasets import load_dataset
+num = 200
+dataset = load_dataset('glue', 'mrpc', split='train')
+dataset["sentence1"]
+df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
+df = df.transpose()
+target = dataset["label"]
+#dev
+dev = load_dataset('glue', 'mrpc', split='validation')
+dev["sentence1"]
+dfdev = pd.DataFrame([dev["sentence1"], dev["sentence2"]])
+dfdev = dfdev.transpose()
+targetdev = dev["label"]
+#test
+test = load_dataset('glue', 'mrpc', split='test')
+test["sentence1"]
+dftest = pd.DataFrame([test["sentence1"], test["sentence2"]])
+dftest = dftest.transpose()
+targettest = test["label"]
+
+
+target = target[:num]
+df = df.iloc[:num, :]
+
+targetdev = targetdev[:100]
+dfdev = dfdev.iloc[:100, :]
+
+targettest = targettest[:100]
+dftest = dftest.iloc[:100, :]
+
+
+b = BF_Classification(pretrainedModel = "bert-base-uncased", maxLength = 50)
+b.Set_Dataset(df, target, dataType = "train", batchSize=100, shuffle=True)
+b.Set_Dataset(dfdev, targetdev, dataType = "dev", batchSize=100, shuffle=True)
+b.Create_Model(b.labelLength)
+b.Show_Model_Architecture(); b.Show_Status()
+a = b.Training(trainDataLoader=b.trainDataLoader, devDataLoader=b.devDataLoader, epochs = 1, eval=True)
+f = b.Forecasting(data = dftest, model = b.model, batchSize = 100)
+
+""" 
+#evaluation
+dataset = load_dataset('glue', 'mrpc', split='test')
+dataset["sentence1"]
+df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
+df = df.transpose()
+target = dataset["label"]
+pred, acc = b.Testing(b.model, df, target); acc
+ """
+""" #MRPC 0.7386
 
 from datasets import load_dataset
 dataset = load_dataset('glue', 'mrpc', split='train')
@@ -345,9 +422,7 @@ df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
 df = df.transpose()
 target = dataset["label"]
 pred, acc = b.Testing(b.model, df, target); acc
-
-
-
+ """
 
 """  #CoLA -> OK, 0.83, epoch=10 (bert-base-uncased)
 #tmp = "data/glue_data/coLA/train.tsv"
@@ -551,3 +626,4 @@ len(myData["paragraphs"])
 
 ##############################test######################################
  """
+
