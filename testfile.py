@@ -113,8 +113,16 @@ class BERT_Family(nn.Module):
                 optimizer.step()
                 running_loss += outputs[0].item()
                 _, pred = torch.max(outputs[1], -1)
-                total += input[1].size(0)
-                correct += (pred == input[1]).sum().item()
+                
+                if "BF_TokenClassification" in self.status["BERT_Type"]:
+                    pred = pred.view(-1)
+                    label = input[1].view(-1).to(self.device)
+                    compareIdx = torch.where(label!=-100)
+                    correct = sum(pred[compareIdx] == label[compareIdx])
+                    total = len(compareIdx[0])
+                else:
+                    total += input[1].size(0)
+                    correct += (pred ==input[1]).sum().item()
 
             if eval & (devDataLoader is not None):
                 self.model.eval()
@@ -768,7 +776,7 @@ b.Training(trainDataLoader = b.trainDataLoader, epochs = 3)
  """
 
 
-# token classification
+""" #test
 class BF_TokenClassification(BERT_Family):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -854,13 +862,7 @@ tmp.word_ids()
 
 
 
-#start experiment
 
-d = BF_TokenClassification()
-d.Set_Dataset(data = wnut["train"], dataType = "train")
-d.Create_Model()
-d.Show_Model_Architecture(); d.Show_Status()
-d.Training(trainDataLoader = d.trainDataLoader, epochs=1, eval=False)
 
 len(d4)
 
@@ -889,4 +891,15 @@ test[0] =
 tmp = torch.max(output[1], -1)
 tmp[1].shape
 m
+
+ """
+
+# token classification
+#start experiment
+wnut = load_dataset("wnut_17")
+d = BF_TokenClassification()
+d.Set_Dataset(data = wnut["train"], dataType = "train", batchSize = 100)
+d.Create_Model()
+d.Show_Model_Architecture(); d.Show_Status()
+d.Training(trainDataLoader = d.trainDataLoader, epochs=10, eval=False)
 
