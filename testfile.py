@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch
 from transformers import BertTokenizerFast
 import pandas as pd
-from transformers import BertForSequenceClassification, BertForQuestionAnswering
+from transformers import BertForSequenceClassification, BertForQuestionAnswering, BertForTokenClassification
 #from accelerate import 
 from tqdm.auto import tqdm
 import json
@@ -355,13 +355,14 @@ class QA_Dataset(Dataset):
             inputIds, tokenTypeIds, attentionMask = Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen = self.maxSeqLen)
             return torch.tensor(inputIds), torch.tensor(tokenTypeIds), torch.tensor(attentionMask), ansStartToken, ansEndToken
 
-
+  
+ 
            
-def Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen):
-    paddingLen = maxSeqLen - len(inputIdsQuestion) - len(inputIdsParagraph)
-    inputIds = inputIdsQuestion + inputIdsParagraph + [0] * paddingLen
-    tokenTypeIds = [0] * len(inputIdsQuestion) + [1] * len(inputIdsParagraph) + [0] * paddingLen
-    attentionMask = [1] * (len(inputIdsQuestion) + len(inputIdsParagraph)) + [0] * paddingLen
+def Padding(Seq1Ids, Seq2Ids, maxSeqLen):
+    paddingLen = maxSeqLen - len(Seq1Ids) - len(Seq2Ids)
+    inputIds = Seq1Ids + Seq2Ids + [0] * paddingLen
+    tokenTypeIds = [0] * len(Seq1Ids) + [1] * len(Seq2Ids) + [0] * paddingLen
+    attentionMask = [1] * (len(Seq1Ids) + len(Seq2Ids)) + [0] * paddingLen
     return inputIds, tokenTypeIds, attentionMask
 
 def Auto_Build_Model(data = None, target = None, pretrainedModel = None, **kwargs):
@@ -709,37 +710,30 @@ data = load_dataset("conll2003")
 a = data["train"].features['tokens']
 a.feature
 data["train"][3]
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
 
 
 data["train"][0]
 
 
 
-def tokenize_and_align_labels(examples, task = "ner"):
-    tokenized_inputs = tokenizer(examples["tokens"], truncation=True, is_split_into_words=True)
 
-    labels = []
-    for i, label in enumerate(examples[f"{task}_tags"]):
-        word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
-        previous_word_idx = None
-        label_ids = []
-        for word_idx in word_ids:  # Set the special tokens to -100.
-            if word_idx is None:
-                label_ids.append(-100)
-            elif word_idx != previous_word_idx:  # Only label the first token of a given word.
-                label_ids.append(label[word_idx])
-            else:
-                label_ids.append(-100)
-            previous_word_idx = word_idx
-        labels.append(label_ids)
-
-    tokenized_inputs["labels"] = labels
-    return tokenized_inputs
-
+for i, u in enumerate(data["train"][0]["ner_tags"]):
+    print(i, u)
 task = "ner"
 tokenize_and_align_labels(data["train"][0])
 tmp = tokenizer(data["train"][0]["tokens"], truncation=True, is_split_into_words=True)
+tmp.word_ids()
+
+tokenized_wnut["train"][0]
+
+
+
+tmp = tokenizer(data["train"][0]["tokens"], truncation=True, is_split_into_words=True)
+tokens = tokenizer.convert_ids_to_tokens(tmp["input_ids"])
+
+
+tmp
 example = data["train"][0]
 example[f"{task}_tags"]
 tmp.word_ids(batch_index=0)
@@ -760,3 +754,98 @@ type(wnut) == "datasets.dataset_dict.DatasetDict"
 wnut.__annotations__
 type(wnut).__name__ == "DatasetDict"
 
+
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+def tokenize_and_align_labels(examples):
+    tokenized_inputs = tokenizer(examples["tokens"], truncation=True, is_split_into_words=True)
+
+    labels = []
+    for i, label in enumerate(examples[f"{task}_tags"]):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
+        previous_word_idx = None
+        label_ids = []
+        for word_idx in word_ids:  # Set the special tokens to -100.
+            if word_idx is None:
+                label_ids.append(-100)
+            elif word_idx != previous_word_idx:  # Only label the first token of a given word.
+                label_ids.append(label[word_idx])
+            else:
+                label_ids.append(-100)
+            previous_word_idx = word_idx
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
+tokenized_wnut = data.map(tokenize_and_align_labels, batched=True)
+
+data["train"][0]
+tmp = tokenizer(data["train"][0]["tokens"], truncation=True, is_split_into_words=True)
+tmp["input_ids"]
+
+
+class BF_TokenClassification(BERT_Family):
+    def __init__(self, tokenTask = "ner", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.tokenTask = tokenTask
+    
+    
+    def Set_Dataset(self, data: dataset_dict.DatasetDict, maxLength = 50):
+        dataWithLabel = self.__AddLabels(data = data)
+
+
+    def __AddLabels(self, data):
+        tokenized_inputs = self.tokenizer(data["tokens"], truncation=True, is_split_into_words=True)
+        labels = []
+        for i, label in enumerate(data[f"{self.tokenTask}_tags"]):
+            word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
+            previous_word_idx = None
+            label_ids = []
+            for word_idx in word_ids:  # Set the special tokens to -100.
+                if word_idx is None:
+                    label_ids.append(-100)
+                elif word_idx != previous_word_idx:  # Only label the first token of a given word.
+                    label_ids.append(label[word_idx])
+                else:
+                    label_ids.append(-100)
+                previous_word_idx = word_idx
+            labels.append(label_ids)
+
+        tokenized_inputs["labels"] = labels
+        return tokenized_inputs
+
+
+class Token_Dataset(Dataset):
+    def __init__(self, data, maxLength = 50) -> None:
+        super().__init__()
+        self.data = data
+        self.maxLength = maxLength
+    
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        self.data[index]
+        tmp = self.tokenizer(self.data["train"][index]["tokens"], truncation=True, max_length=self.maxLength, is_split_into_words=True)
+        label = self.data["train"][index][f"{self.tokenTask}_tags"]
+
+        #step1 把label並出來
+
+        #step2 padding
+
+        #step3 padding label
+
+        #input_ids
+
+        #token_type_ids
+
+        #attention_mask
+        pass
+
+
+
+
+tmp
+a, b, c = Padding(tmp["input_ids"], [], 50)
+c
+tokenized_wnut["train"][0]
+data["train"][0]
