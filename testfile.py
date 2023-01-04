@@ -8,6 +8,7 @@ from transformers import BertForSequenceClassification, BertForQuestionAnswering
 #from accelerate import 
 from tqdm.auto import tqdm
 import json
+from datasets import load_dataset, dataset_dict
 
 ########## Modules ##########
 #One or two sentence with one dim label
@@ -47,15 +48,19 @@ class BERT_Family(nn.Module):
         self.maxLength = maxLength
         self.trainDataLoader, self.devDataLoader, self.testDataLoader =  None, None, None
         self.model, self.batchSize = None, 100
-        self.status = {"BERT_Type": ["BERT_Family"],\
+        self.status = {"BERT_Type\t": ["BERT_Family"],\
                         "hasData": False,\
                         "hasModel": False,\
                         "isTrained": False,\
                         "accumulateEpoch": 0}
+        self.downStreamTaskDomain = {"Downstream task\t": "BF_Family class", \
+                                    "Sequence Classification": "BF_Classification",\
+                                    "Question Answering": "BF_QA",\
+                                    "Token Classification": "BF_TokenClassification"}
 
 
     def Show_Model_Architecture(self) -> None:
-        assert self.status["hasModel"], "No model in the BERT_Family object."
+        if self.status["hasModel"] is None: print("No model in the BERT_Family object."); return
         for name, module in self.model.named_children():
             if name == "bert":
                 for n, _ in module.named_children():
@@ -73,11 +78,23 @@ class BERT_Family(nn.Module):
         print("\n".join("{}\t{}".format(k, v) for k, v in self.status.items()))  
 
     
-    def Load_Model(self) -> None:
+    def Show_All_Task_In_BERT_Family(self) -> None:
+        print("\n".join("{}\t{}".format(k, v) for k, v in self.downStreamTaskDomain.items()))  
+
+
+    def Load_Model(self, model = None) -> None:
+        self.status["hasModel"] = True
         pass
 
 
     def Save_Model(self) -> None:
+        pass
+
+
+    def Load_Dataset_Dict(self, data:dataset_dict.DatasetDict, downStreamTask = "Sequence Classification") -> None:
+        assert downStreamTask in list(self.downStreamTaskDomain.keys())[1:], "This version does not implement " + downStreamTask + " task."
+        assert type(data).__name__ == "DatasetDict", "Only accept dataset_dict.DatasetDict class."
+
         pass
 
 
@@ -187,7 +204,6 @@ class BF_Classification(BERT_Family):
             self.status["accumulateEpoch"] += 1
         
 
-
 class BF_QA(BERT_Family):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -285,7 +301,6 @@ class BF_QA(BERT_Family):
         return torch.all(results), "Mismatch keys between questionsDic and keysDomain."
 
 
-
 class QA_Dataset(Dataset):
     def __init__(self, dataType, questions, tokenizedQuestions, tokenizedParagraphs, maxQuestionLen = 40, maxParagraphLen = 150, stride = 80):
         self.dataType = dataType
@@ -340,7 +355,8 @@ class QA_Dataset(Dataset):
             inputIds, tokenTypeIds, attentionMask = Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen = self.maxSeqLen)
             return torch.tensor(inputIds), torch.tensor(tokenTypeIds), torch.tensor(attentionMask), ansStartToken, ansEndToken
 
-            
+
+           
 def Padding(inputIdsQuestion, inputIdsParagraph, maxSeqLen):
     paddingLen = maxSeqLen - len(inputIdsQuestion) - len(inputIdsParagraph)
     inputIds = inputIdsQuestion + inputIdsParagraph + [0] * paddingLen
@@ -681,5 +697,66 @@ b.Training(trainDataLoader = b.trainDataLoader, epochs = 3)
  """
 
 
+# token classification
+class BF_TokenClassification(BERT_Family):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+ 
+
+from transformers import AutoTokenizer
+from datasets import load_dataset
+data = load_dataset("conll2003")
+a = data["train"].features['tokens']
+a.feature
+data["train"][3]
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
+
+data["train"][0]
+
+
+
+def tokenize_and_align_labels(examples, task = "ner"):
+    tokenized_inputs = tokenizer(examples["tokens"], truncation=True, is_split_into_words=True)
+
+    labels = []
+    for i, label in enumerate(examples[f"{task}_tags"]):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
+        previous_word_idx = None
+        label_ids = []
+        for word_idx in word_ids:  # Set the special tokens to -100.
+            if word_idx is None:
+                label_ids.append(-100)
+            elif word_idx != previous_word_idx:  # Only label the first token of a given word.
+                label_ids.append(label[word_idx])
+            else:
+                label_ids.append(-100)
+            previous_word_idx = word_idx
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
+
+task = "ner"
+tokenize_and_align_labels(data["train"][0])
+tmp = tokenizer(data["train"][0]["tokens"], truncation=True, is_split_into_words=True)
+example = data["train"][0]
+example[f"{task}_tags"]
+tmp.word_ids(batch_index=0)
 ##############################test######################################
+
+def haha(a):
+    return a+1
+tokenized_data = data.map(tokenize_and_align_labels, batched=True)
+
+
+from datasets import load_dataset
+
+wnut = load_dataset("wnut_17")
+
+
+wnut
+type(wnut) == "datasets.dataset_dict.DatasetDict"
+wnut.__annotations__
+type(wnut).__name__ == "DatasetDict"
 
