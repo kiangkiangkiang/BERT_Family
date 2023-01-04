@@ -642,10 +642,15 @@ b.Create_Model(labelLength=b.labelLength)
 b.Show_Model_Architecture(); b.Show_Status()
 a = b.Training(1)
 """
+""" 
+def read_data(file):
+    with open(file, 'r', encoding="utf-8") as reader:
+        data = json.load(reader)
+    return data["questions"], data["paragraphs"]
+ """
 
 
-
-# QA
+""" # QA
 from zipfile import ZipFile, Path
 from io import StringIO
 import io
@@ -661,34 +666,10 @@ def read_data(dataDir, name):
 
 #d = pd.read_csv(StringIO(zipped.read_text()), sep="\t")
 #tmp = "BERT_Family/data/QA_data/"
-""" 
-def read_data(file):
-    with open(file, 'r', encoding="utf-8") as reader:
-        data = json.load(reader)
-    return data["questions"], data["paragraphs"]
- """
+
 train_questions, train_paragraphs = read_data(dataDir, "hw7_train.json")
-""" 
-zipped = Path(dataDir, at="QA_data/" + "hw7_dev.json")
-dev_questions, dev_paragraphs = read_data(zipped)
 
-zipped = Path(dataDir, at="QA_data/" + "hw7_test.json")
-test_questions, test_paragraphs = read_data(zipped)
- """
-""" 
-tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
-train_questions_tokenized = tokenizer([train_question["question_text"] for train_question in train_questions], add_special_tokens=False)
-dev_questions_tokenized = tokenizer([dev_question["question_text"] for dev_question in dev_questions], add_special_tokens=False)
-test_questions_tokenized = tokenizer([test_question["question_text"] for test_question in test_questions], add_special_tokens=False) 
 
-train_paragraphs_tokenized = tokenizer(train_paragraphs, add_special_tokens=False)
-dev_paragraphs_tokenized = tokenizer(dev_paragraphs, add_special_tokens=False)
-test_paragraphs_tokenized = tokenizer(test_paragraphs, add_special_tokens=False)
-
-train_set = QA_Dataset("train", train_questions, train_questions_tokenized, train_paragraphs_tokenized)
-dev_set = QA_Dataset("dev", dev_questions, dev_questions_tokenized, dev_paragraphs_tokenized)
-test_set = QA_Dataset("test", test_questions, test_questions_tokenized, test_paragraphs_tokenized)
- """
 b = BF_QA(pretrainedModel = "bert-base-chinese")
 b.Set_Dataset(train_questions, train_paragraphs, dataType = "train", batchSize=50, shuffle=True, pin_memory=True)
 b.Create_Model()
@@ -696,11 +677,8 @@ b.Show_Model_Architecture(); b.Show_Status()
 b.Training(trainDataLoader = b.trainDataLoader, epochs = 3)
 # Note: Do NOT change batch size of dev_loader / test_loader !
 # Although batch size=1, it is actually a batch consisting of several windows from the same QA pair
-""" train_loader = DataLoader(train_set, batch_size=train_batch_size, shuffle=True, pin_memory=True)
-dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, pin_memory=True)
-test_loader = DataLoader(test_set, batch_size=1, shuffle=False, pin_memory=True)
- """
 
+ """
 
 
 ##############################test######################################
