@@ -48,8 +48,8 @@ class BERT_Family(nn.Module):
         self.maxLength = maxLength
         self.trainDataLoader, self.devDataLoader, self.testDataLoader =  None, None, None
         self.model, self.batchSize = None, 100
-        self.status = {"BERT_Type\t": ["BERT_Family"],\
-                        "hasData": False,\
+        self.status = {"BERT_Type": ["BERT_Family"],\
+                        "hasData\t": False,\
                         "hasModel": False,\
                         "isTrained": False,\
                         "accumulateEpoch": 0}
@@ -103,8 +103,8 @@ class BERT_Family(nn.Module):
         for epoch in range(epochs):
             total, correct, running_loss = 0, 0, 0
             for df in tqdm(trainDataLoader):
-                input = [t for t in df if t is not None]
                 optimizer.zero_grad()
+                input = [t for t in df if t is not None]
                 outputs = self.model(input_ids=input[0]["input_ids"].squeeze(1).to(self.device), 
                                 token_type_ids=input[0]["token_type_ids"].squeeze(1).to(self.device), 
                                 attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device), 
@@ -179,7 +179,7 @@ class BF_Classification(BERT_Family):
         exec("self." + dataType + "DataLoader" + " = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)")
 
         self.batchSize = batchSize
-        self.status["hasData"] = True
+        self.status["hasData\t"] = True
         self.labelLength = len(tmpDataset.rawTarget_dict)
         
 
@@ -236,7 +236,7 @@ class BF_QA(BERT_Family):
         if dataType not in ["train", "test", "dev"]: return DataLoader(tmpDataset, batch_size=batchSize, shuffle=True, pin_memory=True, **kwargs)
         exec("self." + dataType + "DataLoader" + " = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)")
         self.batchSize = batchSize
-        self.status["hasData"] = True
+        self.status["hasData\t"] = True
 
 
     def Evaluate(self, data, output, tokenizer = None):
@@ -365,6 +365,7 @@ class BF_TokenClassification(BERT_Family):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.labelNames = None
+        self.status["BERT_Type"].append("BF_TokenClassification")
     
     
     def Set_Dataset(self, data: dataset_dict.DatasetDict, tokenizer = None, maxLength = 50, batchSize = 100, dataType = "train", **kwargs):
@@ -378,8 +379,8 @@ class BF_TokenClassification(BERT_Family):
         exec("self." + dataType + "DataLoader" + " = DataLoader(tmpDataset, batch_size=batchSize, **kwargs)")
 
         self.batchSize = batchSize
-        self.labelNames = data["train"].features["ner_tags"].feature.names
-        self.status["hasData"] = True
+        self.labelNames = data.features["ner_tags"].feature.names
+        self.status["hasData\t"] = True
 
     def Create_Model(self, labelNames = None, pretrainedModel = None, **kwargs):
         if labelNames is not None: self.labelNames = labelNames
@@ -390,6 +391,8 @@ class BF_TokenClassification(BERT_Family):
         self.model = BertForTokenClassification.from_pretrained(pretrainedModel, id2label = id2label, label2id = label2id, **kwargs).to(self.device)
         return self.model
     
+    def Forecasting(self, data, model, tokenizer, batchSize = 100, **kwargs):
+        pass
 
 class Token_Dataset(Dataset):
     def __init__(self, data, tokenizer, maxLength = 50) -> None:
@@ -406,7 +409,7 @@ class Token_Dataset(Dataset):
 
     def __getitem__(self, index):
         self.data[index]
-        token = self.tokenizer(self.data[index]["tokens"], truncation=True, max_length=self.maxLength, is_split_into_words=True, padding="max_length", add_special_tokens=False, return_tensors="pt")
+        token = self.tokenizer.encode_plus(self.data[index]["tokens"], truncation=True, max_length=self.maxLength, is_split_into_words=True, padding="max_length", add_special_tokens=False, return_tensors="pt")
 
         #initial label
         label = self.data[index]["ner_tags"]
@@ -421,7 +424,7 @@ class Token_Dataset(Dataset):
                 labelIds.append(-100)
             prevWord = wordIds
 
-        return torch.tensor(token["input_ids"]), torch.tensor(token["token_type_ids"]), torch.tensor(token["attention_mask"]), torch.tensor(labelIds)
+        return token, torch.tensor(labelIds)
 
  
            
@@ -851,11 +854,14 @@ tmp.word_ids()
 
 
 
+#start experiment
 
 d = BF_TokenClassification()
-d2 = d.Set_Dataset(data = data["train"], dataType = "other")
-d3 = Infinite_Iter(d2)
-d4 = next(d3)
+d.Set_Dataset(data = wnut["train"], dataType = "train")
+d.Create_Model()
+d.Show_Model_Architecture(); d.Show_Status()
+d.Training(trainDataLoader = d.trainDataLoader, epochs=1, eval=False)
+
 len(d4)
 
 #nf = data["train"].features["ner_tags"]
@@ -866,15 +872,20 @@ label2id = {v: k for k, v in id2label.items()}
 
 from transformers import AutoModelForTokenClassification
 m = AutoModelForTokenClassification.from_pretrained("bert-base-uncased", id2label = id2label, label2id = label2id)
+
+
+d = BF_TokenClassification()
+d.Set_Dataset(data = data, dataType = "train")
 m = BertForTokenClassification.from_pretrained("roberta-base", id2label = id2label, label2id = label2id)
 m.config.num_labels
-
+d4[0]
 d4[0].shape
 m.train()
 output = m(input_ids = d4[0].squeeze(1), token_type_ids = d4[1].squeeze(1), attention_mask = d4[2].squeeze(1), labels = d4[3])
 len(output)
 output[1].shape
-
+test = torch.empty(2)
+test[0] = 
 tmp = torch.max(output[1], -1)
 tmp[1].shape
 m
