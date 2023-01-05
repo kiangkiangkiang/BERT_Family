@@ -72,11 +72,33 @@ class BERTFamily(nn.Module):
         pass
 
 
-    def load_dataset_dict(self, data:dataset_dict.DatasetDict, downStreamTask = "Sequence Classification") -> None:
-        assert downStreamTask in list(self.down_stream_task_domain.keys())[1:], "This version does not implement " + downStreamTask + " task."
+    dataset = load_dataset('glue', 'mrpc', split='train')
+
+    d2 = load_dataset("glue", 'mrpc')
+    type(dataset)
+a = pd.DataFrame(d2["train"])
+a.iloc[:,[0]]
+s = a[["label"]].to
+pd.Series(s.iloc[:,0])
+
+    def load_dataset_dict(self, data=None, x=None, y=None, down_stream_task="Sequence Classification"):
+        """ 
+        Input: 
+        x, y need to be a list containing either a number vector that the features locate in dataframe or a string vector with the features name.
+        """
+        assert down_stream_task in list(self.down_stream_task_domain.keys())[1:], "This version does not implement " + down_stream_task + " task."
+        assert len(y) == 1, "The dimension of y is not 1 (multilvariable task is not applied now)."
+        if type(data).__name__ == "DatasetDict":
+            pass
+        elif type(data).__name__ == "Dataset":
+            data_pd = pd.DataFrame(data)
+            x, y = data_pd[x], list(data_pd[y].iloc[:, 0]) if isinstance(x[0], str) else data_pd.iloc[:, x], list(data_pd.iloc[:, y].iloc[:, 0])
+        else:
+            raise AttributeError(type(data).__name__ + " type data cannot be handled. Please input a 'Dataset' or 'DatasetDict' type data.") 
+
+    def dataset2dataframe(self, data = None):
         assert type(data).__name__ == "DatasetDict", "Only accept dataset_dict.DatasetDict class."
 
-        pass
 
 
 class BFClassification(BERTFamily):
@@ -142,7 +164,7 @@ class BFClassification(BERTFamily):
     
 
     def forecasting(self, data, model, tokenizer, batch_size = 100, **kwargs):
-        tmp_dataset = ClassificationDataset(raw_data = data, tokenizer = tokenizer, max_length = self.max_length)
+        tmp_dataset = self.ClassificationDataset(raw_data = data, tokenizer = tokenizer, max_length = self.max_length)
         data_loader = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)
         predictions = None
         with torch.no_grad():
@@ -212,7 +234,21 @@ class BFClassification(BERTFamily):
         acc = correct / total
         return predictions, acc, loss
 
-       
+      
+    def auto_build_model(self, dataset=None, dataset_x_features=None, dataset_y_features=None, x_dataframe=None, y=None, 
+                        pretrained_model=None, max_length=50, batch_size=100):
+        if not dataset:
+            assert (not dataset_x_features) & (not dataset_y_features), "Missing x, y features name."
+            x_dataframe, y = self.load_dataset_dict(dataset=dataset, x=dataset_x_features, y=dataset_y_features)
+        pretrained_model = "bert-base-uncased" if not pretrained_model else pretrained_model
+        result_model = BFClassification(pretrained_model=pretrained_model, max_length=max_length)
+        result_model.set_dataset(x_dataframe, y, batch_size=batch_size, shuffle=True)
+        result_model.create_model(result_model.label_length)
+        result_model.show_model_architecture()
+        result_model.show_status()
+        return result_model
+
+
 class BFQA(BERTFamily):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -290,7 +326,7 @@ class BFQA(BERTFamily):
         tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
         questions_tokenized = tokenizer([q["question_text"] for q in questions_dict], add_special_tokens=False)
         paragraphs_tokenized = tokenizer(paragraphs_list, add_special_tokens=False)
-        tmp_dataset = QADataset(data_type, questions_dict, questions_tokenized, paragraphs_tokenized)
+        tmp_dataset = self.QADataset(data_type, questions_dict, questions_tokenized, paragraphs_tokenized)
 
         if data_type not in ["train", "test", "dev"]: return DataLoader(tmp_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, **kwargs)
         exec("self." + data_type + "DataLoader" + " = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)")
@@ -411,7 +447,7 @@ class BFTokenClassification(BERTFamily):
 
         """
         if tokenizer is None: tokenizer = self.tokenizer
-        tmp_dataset = TokenDataset(data, tokenizer = self.tokenizer, max_length = max_length)
+        tmp_dataset = self.TokenDataset(data, tokenizer = self.tokenizer, max_length = max_length)
         if data_type not in ["train", "test", "dev"]: return DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)
         exec("self." + data_type + "DataLoader" + " = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)")
 
@@ -442,11 +478,6 @@ def padding(seq1_ids, seq2_ids, max_seq_len):
     attention_mask = [1] * (len(seq1_ids) + len(seq2_ids)) + [0] * paddingLen
     return input_ids, token_type_ids, attention_mask
 
-def auto_build_model(data = None, target = None, pretrained_model = None, **kwargs):
-    if not pretrained_model:
-        #prepare pretrained_model
-        pass
-    pass
 
 def read_json_data(file):
     with open(file, 'r', encoding="utf-8") as reader:
@@ -643,6 +674,7 @@ pred, acc = b.testing(b.model, df, target); acc
 #MRPC 0.7386
 from datasets import load_dataset
 dataset = load_dataset('glue', 'mrpc', split='train')
+dataset["sentence1"]
 dataset["sentence1"]
 df = pd.DataFrame([dataset["sentence1"], dataset["sentence2"]])
 df = df.transpose()
@@ -925,3 +957,5 @@ d.training(train_data_loader = d.train_data_loader, epochs=10, eval=False)
 
 dict = 'something awful'  # Bad Idea... pylint: disable=redefined-builtin
 
+if 5<2:
+    raise AttributeError("haha")
