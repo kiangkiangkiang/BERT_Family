@@ -114,6 +114,7 @@ class BERT_Family(nn.Module):
                 running_loss += outputs[0].item()
                 _, pred = torch.max(outputs[1], -1)
                 
+                #
                 if "BF_TokenClassification" in self.status["BERT_Type"]:
                     pred = pred.view(-1)
                     label = input[1].view(-1).to(self.device)
@@ -215,8 +216,6 @@ class BF_Classification(BERT_Family):
         return predictions
 
        
-
-
 class BF_QA(BERT_Family):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -402,6 +401,7 @@ class BF_TokenClassification(BERT_Family):
     def Forecasting(self, data, model, tokenizer, batchSize = 100, **kwargs):
         pass
 
+
 class Token_Dataset(Dataset):
     def __init__(self, data, tokenizer, maxLength = 50) -> None:
         super().__init__()
@@ -435,7 +435,7 @@ class Token_Dataset(Dataset):
         return token, torch.tensor(labelIds)
 
  
-           
+         
 def Padding(Seq1Ids, Seq2Ids, maxSeqLen):
     paddingLen = maxSeqLen - len(Seq1Ids) - len(Seq2Ids)
     inputIds = Seq1Ids + Seq2Ids + [0] * paddingLen
@@ -894,6 +894,20 @@ m
 
  """
 
+
+#test hugging face
+train_dataloader = DataLoader(
+    tokenized_datasets["train"],
+    shuffle=True,
+    collate_fn=data_collator,
+    batch_size=8,
+)
+eval_dataloader = DataLoader(
+    tokenized_datasets["validation"], collate_fn=data_collator, batch_size=8
+)
+
+
+
 # token classification
 #start experiment
 wnut = load_dataset("wnut_17")
@@ -902,4 +916,6 @@ d.Set_Dataset(data = wnut["train"], dataType = "train", batchSize = 100)
 d.Create_Model()
 d.Show_Model_Architecture(); d.Show_Status()
 d.Training(trainDataLoader = d.trainDataLoader, epochs=10, eval=False)
+
+
 
