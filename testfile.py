@@ -150,7 +150,7 @@ class BFClassification(BERTFamily):
         return predictions
 
 
-    def training(self, train_data_loader, dev_data_loader = None, epochs = 50, optimizer = None, eval = False):
+    def train(self, train_data_loader, dev_data_loader = None, epochs = 50, optimizer = None, eval = False):
         #這裡要補checkpoint
         assert self.status["hasModel"], "No model in the BERTFamily object."
         if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
@@ -188,7 +188,7 @@ class BFClassification(BERTFamily):
             self.status["accumulateEpoch"] += 1
 
 
-    def testing(self, model, data_loader, eval = False, **kwargs):
+    def test(self, model, data_loader, eval = False, **kwargs):
         predictions = None
         total, correct, loss= 0, 0, 0
         with torch.no_grad():
@@ -464,7 +464,7 @@ def load_dataset_dict(data=None, x:list=None, y:list=None, down_stream_task:str=
             if count == 3: 
                 return result_x, result_y, result_type
     elif type(data).__name__ == "Dataset":
-        return dataset2dataframe(data=data, x=x, y=y), [data_type]
+        return dataset2dataframe(data=data, x=x, y=y), data_type
     else:
         raise AttributeError(type(data).__name__ + " type data cannot be handled. Please input a 'Dataset' or 'DatasetDict' type data.") 
 
@@ -973,3 +973,4 @@ if 5<2:
 from datasets import load_dataset
 dataset = load_dataset('glue', 'mrpc', split='train')
 s = auto_build_model(dataset, dataset_x_features=[0, 1], dataset_y_features=[3])
+s.train(train_data_loader=s.train_data_loader, epochs=1)
