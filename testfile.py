@@ -9,13 +9,19 @@ from transformers import BertForSequenceClassification, BertForQuestionAnswering
 from tqdm.auto import tqdm
 import json
 from datasets import load_dataset, dataset_dict
+from typing import List, Optional, Iterable, Any, Union
 import numpy as np
 ########## Modules ##########
 #One or two sentence with one dim label
 
 class BERTFamily(nn.Module):
-    def __init__(self, pretrained_model = 'bert-base-uncased', max_length = 100,\
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")) -> None:
+    def __init__(
+        self, 
+        pretrained_model: str='bert-base-uncased', 
+        max_length: int=100,
+        device: str=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        ):
+
         super().__init__()
         print("Using device: ", device)
         self.device = device
@@ -36,7 +42,7 @@ class BERTFamily(nn.Module):
 
 
     def show_model_architecture(self) -> None:
-        if self.status["hasModel"] is None: print("No model in the BERTFamily object."); return
+        assert self.status["hasModel"], "No model in the BERTFamily object."
         for name, module in self.model.named_children():
             if name == "bert":
                 for n, _ in module.named_children():
@@ -58,7 +64,7 @@ class BERTFamily(nn.Module):
         print("\n".join("{}\t{}".format(k, v) for k, v in self.down_stream_task_domain.items()))  
 
 
-    def load_model(self, model = None) -> None:
+    def load_model(self, path: str) -> None:
         self.status["hasModel"] = True
         pass
 
@@ -74,17 +80,24 @@ class BERTFamily(nn.Module):
 
 
 class BFClassification(BERTFamily):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.label_length = None
         self.status["BERT_Type"].append("BFClassification")
 
 
     class ClassificationDataset(Dataset):
-        def __init__(self, raw_data, tokenizer, raw_target = None, max_length = 100) -> None:
+        def __init__(
+            self, 
+            tokenizer: Any, 
+            raw_data: pd.DataFrame, 
+            raw_target: Optional[Iterable], 
+            max_length: int=100
+            ):
+
             super().__init__()
             self.tokenizer = tokenizer
-            self.raw_data, self.raw_target = pd.DataFrame(raw_data), raw_target
+            self.raw_data, self.raw_target = raw_data, raw_target
             self.max_length = max_length
             assert self.raw_data.shape[1] <= 2, "Only accept one or two sequences as the input argument."
             if raw_target is not None:
@@ -99,13 +112,32 @@ class BFClassification(BERTFamily):
 
         def __getitem__(self, idx):
             if self.raw_data.shape[1] == 2:
-                result = self.tokenizer.encode_plus(self.raw_data.iloc[idx, 0], self.raw_data.iloc[idx, 1], padding="max_length", max_length=self.max_length, truncation = True, return_tensors = 'pt')
+                result = self.tokenizer.encode_plus(self.raw_data.iloc[idx, 0], 
+                                                    self.raw_data.iloc[idx, 1], 
+                                                    padding="max_length", 
+                                                    max_length=self.max_length, 
+                                                    truncation=True, 
+                                                    return_tensors='pt')
             else:
-                result = self.tokenizer.encode_plus(self.raw_data.iloc[idx, 0], padding="max_length", max_length=self.max_length, truncation = True, return_tensors = 'pt')
+                result = self.tokenizer.encode_plus(self.raw_data.iloc[idx, 0], 
+                                                    padding="max_length", 
+                                                    max_length=self.max_length, 
+                                                    truncation=True, 
+                                                    return_tensors='pt')
+
             return result, torch.tensor(self.raw_target_dict[self.raw_target[idx]]) if self.raw_target is not None else result
 
 
-    def set_dataset(self, raw_data: pd.DataFrame, raw_target: list, tokenizer = None, data_type = "train", batch_size = 100, **kwargs):
+    def set_dataset(
+        self, 
+        tokenizer: Any,
+        raw_data: pd.DataFrame, 
+        raw_target: Optional[Iterable], 
+        data_type: str="train", 
+        batch_size: int=100, 
+        **kwargs
+        ) -> DataLoader:
+
         """ 
         Input:
         raw_data: n by p, n: observations (total sequence). p: number of sequences in each case.
@@ -116,27 +148,40 @@ class BFClassification(BERTFamily):
         Return 3 object:
         dataset, dataloader, dataloader with iter
         """ 
-        if tokenizer is None: tokenizer = self.tokenizer
-        tmp_dataset = self.ClassificationDataset(raw_data = raw_data, raw_target = raw_target, tokenizer = self.tokenizer, max_length = self.max_length)
-        if data_type not in ["train", "test", "dev"]: return DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)
-        exec("self." + data_type + "_data_loader" + " = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)")
 
-        self.batch_size = batch_size
-        self.status["hasData\t"] = True
-        self.label_length = len(tmp_dataset.raw_target_dict)
-        
+        if tokenizer is None: 
+            tokenizer = self.tokenizer
+        tmp_dataset = self.ClassificationDataset(raw_data=raw_data, raw_target=raw_target, 
+                                                 tokenizer=tokenizer, max_length=self.max_length)
 
-    def create_model(self, label_length:int, pretrained_model = None, **kwargs):
+        if data_type in ["train", "test", "dev"]:     
+            exec("self." + data_type + "_data_loader" + " = DataLoader(tmp_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, **kwargs)")
+            self.batch_size = batch_size
+            self.status["hasData\t"] = True
+            self.label_length = len(tmp_dataset.raw_target_dict)
+            return eval("self." + data_type + "_data_loader")
+
+        return DataLoader(tmp_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, **kwargs)
+
+
+    def create_model(
+        self, label_length:int, pretrained_model: Optional[str], **kwargs
+        ) -> BertForSequenceClassification:
+
         assert (self.label_length is not None) & (self.label_length == label_length), "Mismatch on the length of labels."
         self.status["hasModel"] = True
-        if not pretrained_model: pretrained_model = self.pretrained_model
-        self.model = BertForSequenceClassification.from_pretrained(pretrained_model, num_labels = label_length, **kwargs).to(self.device)   
-        #這裡再新增多一點東西 roberta
+        if not pretrained_model: 
+            pretrained_model = self.pretrained_model
+        self.model = BertForSequenceClassification.from_pretrained(pretrained_model, num_labels=label_length, **kwargs).to(self.device)   
         return self.model
     
+    #要改
+    def inference(
+        self, model: Any, tokenizer: Any, data:pd.DataFrame, batch_size: int=100, **kwargs
+        ) -> list:
 
-    def forecasting(self, data, model, tokenizer, batch_size = 100, **kwargs):
-        tmp_dataset = self.ClassificationDataset(raw_data = data, tokenizer = tokenizer, max_length = self.max_length)
+        #這裡要改 是否還必要轉乘dataloader?  感覺不用
+        tmp_dataset = self.ClassificationDataset(raw_data=data, tokenizer=tokenizer, max_length=self.max_length)
         data_loader = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)
         predictions = None
         with torch.no_grad():
@@ -147,10 +192,18 @@ class BFClassification(BERTFamily):
                                 attention_mask=input[0]["attention_mask"].squeeze(1).to(self.device))
                 _, pred = torch.max(outputs[0].data, 1)
                 predictions = pred if predictions is None else torch.cat((predictions, pred))
-        return predictions
+        return list(predictions)
 
+    #要改
+    def train(
+        self, 
+        train_data_loader: DataLoader, 
+        dev_data_loader: Optional[DataLoader], 
+        epochs: int=50, 
+        optimizer: Any=None, 
+        eval: bool=False
+        ) -> None:
 
-    def train(self, train_data_loader, dev_data_loader = None, epochs = 50, optimizer = None, eval = False):
         #這裡要補checkpoint
         assert self.status["hasModel"], "No model in the BERTFamily object."
         if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
@@ -172,9 +225,7 @@ class BFClassification(BERTFamily):
                 optimizer.step()
                 running_loss += outputs[0].item()
                 _, pred = torch.max(outputs[1], -1)
-                
-                #
-                
+
                 total += input[1].size(0)
                 correct += (pred ==input[1]).sum().item()
 
@@ -187,8 +238,14 @@ class BFClassification(BERTFamily):
                 print('[epoch %d] loss: %.3f, ACC: %.3f' %(epoch + 1, running_loss, correct/total))
             self.status["accumulateEpoch"] += 1
 
+    #這個也要再改 （感覺是大改）
+    def test(
+        self, 
+        model:BertForSequenceClassification,
+        data_loader:DataLoader,
+        eval: bool=False
+        ) -> tuple[list, float, int]:
 
-    def test(self, model, data_loader, eval = False, **kwargs):
         predictions = None
         total, correct, loss= 0, 0, 0
         with torch.no_grad():
@@ -203,18 +260,28 @@ class BFClassification(BERTFamily):
                 total += labels.size(0)
                 correct += (pred == labels).sum().item()
                 predictions = pred if predictions is None else torch.cat((predictions, pred))
-        acc = correct / total
-        return predictions, acc, loss
+        acc = float(correct / total)
+        return list(predictions), acc, loss
+
 
 
 class BFQA(BERTFamily):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.status["BERT_Type"].append("BFQA")
 
 
     class QADataset(Dataset):
-        def __init__(self, data_type, questions, tokenized_questions, tokenized_paragraphs, max_question_len = 40, max_paragraph_len = 150, stride = 80):
+        def __init__(self, 
+            data_type:str, 
+            questions, 
+            tokenized_questions, 
+            tokenized_paragraphs, 
+            max_question_len: int=40, 
+            max_paragraph_len: int=150, 
+            stride: int=80
+            ):
+
             self.data_type = data_type
             self.questions = questions
             self.tokenized_questions = tokenized_questions
@@ -359,6 +426,7 @@ class BFQA(BERTFamily):
         return torch.all(results), "Mismatch keys between questions_dict and keys_domain."
 
 
+
 class BFTokenClassification(BERTFamily):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -427,30 +495,50 @@ class BFTokenClassification(BERTFamily):
 
 
 
-def auto_build_model(dataset:None, dataset_x_features=None, dataset_y_features=None, x_dataframe=None, y=None, 
-                    pretrained_model=None, max_length=50, batch_size=100, data_type=["train"]):
+def auto_build_model(
+    dataset: Any=None, 
+    dataset_x_features: Union[List[int], List[str]]=None, 
+    dataset_y_features: Union[List[int], List[str]]=None, 
+    x_dataframe: pd.DataFrame=None, 
+    y: list=None, 
+    pretrained_model: Optional[str]=None,
+    max_length: int=50, 
+    batch_size: int=100, 
+    data_type: List[str]=["train"]
+    ) -> BFClassification:
+
     if dataset:
         assert (dataset_x_features is not None) & (dataset_y_features is not None), "Missing x, y features name."
         (x_dataframe, y), data_type = load_dataset_dict(data=dataset, x=dataset_x_features, y=dataset_y_features, data_type=data_type)
+
     pretrained_model = "bert-base-uncased" if not pretrained_model else pretrained_model
     result_model = BFClassification(pretrained_model=pretrained_model, max_length=max_length)
+
     if len(data_type) == 1:
         result_model.set_dataset(x_dataframe, y, batch_size=batch_size, shuffle=True, data_type=data_type[0])
     else:
         for i in range(len(data_type)):
             result_model.set_dataset(x_dataframe[i], y[i], batch_size=batch_size, shuffle=True, data_type=data_type[i])
+            
     result_model.create_model(result_model.label_length)
     result_model.show_model_architecture()
     result_model.show_status()
     return result_model
 
 
-def load_dataset_dict(data=None, x:list=None, y:list=None, down_stream_task:str="Sequence Classification", data_type:list=["train"]):
+def load_dataset_dict(
+    data: Any=None, 
+    x: Union[List[int], List[str]]=None, 
+    y: Union[List[int], List[str]]=None, 
+    data_type: List[str]=["train"]
+    ) -> tuple[pd.DataFrame, list, List[str]]:
+
     """ 
     Input: 
-    x, y need to be a list containing either a number vector that the features locate in dataframe or a string vector with the features name.
+    x, y need to be a list containing either a number list that the features locate in dataframe or a string list with the features name.
+    ex. x=[0, 1], which specific the location 1, 2 are the x-features in data respectively.
     """
-    #assert down_stream_task in list(self.down_stream_task_domain.keys())[1:], "This version does not implement " + down_stream_task + " task."
+
     assert len(y) == 1, "The dimension of y is not 1 (multilvariable task is not applied now)."
     if type(data).__name__ == "DatasetDict":
         dataset_dict = sorted(data.values(), key=len, reverse=True)
@@ -469,16 +557,20 @@ def load_dataset_dict(data=None, x:list=None, y:list=None, down_stream_task:str=
         raise AttributeError(type(data).__name__ + " type data cannot be handled. Please input a 'Dataset' or 'DatasetDict' type data.") 
 
 
-def dataset2dataframe(data=None, x=None, y=None):
+def dataset2dataframe(
+    data: Any=None, 
+    x: Union[List[int], List[str]]=None, 
+    y: Union[List[int], List[str]]=None, 
+    ) -> tuple[pd.DataFrame, list]:
+
     assert type(data).__name__ == "Dataset", "Only accept Dataset class."
     data_pd = pd.DataFrame(data)
     if isinstance(x[0], str):
         return data_pd[x], list(data_pd[y].iloc[:, 0])
     else:
         return data_pd.iloc[:, x], list(data_pd.iloc[:, y].iloc[:, 0])
-  
 
-     
+
 def padding(seq1_ids, seq2_ids, max_seq_len):
     paddingLen = max_seq_len - len(seq1_ids) - len(seq2_ids)
     input_ids = seq1_ids + seq2_ids + [0] * paddingLen
@@ -492,9 +584,11 @@ def read_json_data(file):
         data = json.load(reader)
     return data
 
+
 def get_learnable_parameters_size(model):
     tmp = [p for p in model.parameters() if p.requires_grad]
     return sum(list(map(lambda x: len(x.view(-1)), tmp)))
+
 
 def infinite_iter(data_loader):
     it = iter(data_loader)
