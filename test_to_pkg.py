@@ -88,14 +88,15 @@ class BFClassification(BERTFamily):
     class ClassificationDataset(Dataset):
         def __init__(
             self, 
-            tokenizer: Any, 
             raw_data: pd.DataFrame, 
-            raw_target: Optional[Iterable], 
+            raw_target: Optional[Iterable]=None, 
+            tokenizer: Any=None, 
             max_length: int=100
             ):
 
             super().__init__()
-            self.tokenizer = tokenizer
+            if tokenizer:
+                self.tokenizer = tokenizer
             self.raw_data, self.raw_target = raw_data, raw_target
             self.max_length = max_length
             assert self.raw_data.shape[1] <= 2, "Only accept one or two sequences as the input argument."
@@ -129,11 +130,11 @@ class BFClassification(BERTFamily):
 
     def set_dataset(
         self, 
-        tokenizer: Any,
         raw_data: pd.DataFrame, 
-        raw_target: Optional[Iterable], 
+        raw_target: Optional[Iterable]=None, 
+        tokenizer: Any=None,
         data_type: str="train", 
-        batch_size: int=100, 
+        batch_size: int=128, 
         **kwargs
         ) -> DataLoader:
 
@@ -164,19 +165,19 @@ class BFClassification(BERTFamily):
 
 
     def create_model(
-        self, label_length:int, pretrained_model: Optional[str], **kwargs
+        self, label_length:int, pretrained_model: Optional[str]=None, **kwargs
         ) -> BertForSequenceClassification:
 
         assert (self.label_length is not None) & (self.label_length == label_length), "Mismatch on the length of labels."
         self.status["hasModel"] = True
         if not pretrained_model: 
             pretrained_model = self.pretrained_model
-        self.model = BertForSequenceClassification.from_pretrained(pretrained_model, num_labels=label_length, **kwargs).to(self.device)   
+        self.model = BertForSequenceClassification.from_pretrained(pretrained_model, num_labels=label_length, **kwargs) 
         return self.model
     
     #要改
     def inference(
-        self, model: Any, tokenizer: Any, data:pd.DataFrame, batch_size: int=100, **kwargs
+        self, model: Any, data:pd.DataFrame, tokenizer: Any=None, batch_size: int=128, **kwargs
         ) -> list:
 
         #這裡要改 是否還必要轉乘dataloader?  感覺不用
@@ -197,20 +198,23 @@ class BFClassification(BERTFamily):
     def train(
         self, 
         train_data_loader: DataLoader, 
-        dev_data_loader: Optional[DataLoader], 
-        epochs: int=50, 
+        dev_data_loader: Optional[DataLoader]=None, 
+        epochs: int=5, 
         optimizer: Any=None, 
+        lr_scheduler: Any=None,
         eval: bool=False
         ) -> None:
 
-        #這裡要補checkpoint
         assert self.status["hasModel"], "No model in the BERTFamily object."
-        if not optimizer: optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+        if not optimizer: 
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+        if not lr_scheduler: 
+            lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=2, gamma=0.5)
         self.status["isTrained"] = True
-        outputs = None
-
-        self.model.train()
+        
         print("Start training ...")
+        #self.model.to(self.device)
+        self.model.train()
         for epoch in range(epochs):
             total, correct, running_loss = 0, 0, 0
             for df in tqdm(train_data_loader):
@@ -228,9 +232,10 @@ class BFClassification(BERTFamily):
                 total += input[1].size(0)
                 correct += (pred ==input[1]).sum().item()
 
+            lr_scheduler.step()
             if eval & (dev_data_loader is not None):
                 self.model.eval()
-                _, evalAcc, evalLoss = self.testing(self.model, dev_data_loader, eval = True)
+                _, evalAcc, evalLoss = self.test(self.model, dev_data_loader, eval=True)
                 self.model.train()
                 print('[epoch %d] loss: %.3f, TrainACC: %.3f, EvalACC: %.3f, EvalLoss: %.3f' %(epoch + 1, running_loss, correct/total, evalAcc, evalLoss))
             else:
@@ -271,8 +276,8 @@ def auto_build_model(
     x_dataframe: pd.DataFrame=None, 
     y: list=None, 
     pretrained_model: Optional[str]=None,
-    max_length: int=50, 
-    batch_size: int=100, 
+    max_length: int=100, 
+    batch_size: int=128, 
     data_type: List[str]=["train"]
     ) -> BFClassification:
 
@@ -284,10 +289,10 @@ def auto_build_model(
     result_model = BFClassification(pretrained_model=pretrained_model, max_length=max_length)
 
     if len(data_type) == 1:
-        result_model.set_dataset(x_dataframe, y, batch_size=batch_size, shuffle=True, data_type=data_type[0])
+        result_model.set_dataset(raw_data=x_dataframe, raw_target=y, batch_size=batch_size, data_type=data_type[0])
     else:
         for i in range(len(data_type)):
-            result_model.set_dataset(x_dataframe[i], y[i], batch_size=batch_size, shuffle=True, data_type=data_type[i])
+            result_model.set_dataset(raw_data=x_dataframe[i], raw_target=y[i], batch_size=batch_size, data_type=data_type[i])
             
     result_model.create_model(result_model.label_length)
     result_model.show_model_architecture()
@@ -369,5 +374,15 @@ def infinite_iter(data_loader):
             it = iter(data_loader)
 
 
+import gc
+
+
 #test
 dataset = load_dataset('glue', 'mrpc')
+dataset
+mymodel = auto_build_model(dataset=dataset["train"], 
+                           dataset_x_features=['sentence1', 'sentence2'],
+                           dataset_y_features=["label"],
+                           batch_size=128)
+gc.collect()
+mymodel.train(train_data_loader=mymodel.train_data_loader, epochs=1)
