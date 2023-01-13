@@ -27,7 +27,6 @@ class BERTFamily(nn.Module):
         self.device = device
         self.pretrained_model = pretrained_model
         self.tokenizer = tokenizer 
-        #self.tokenizer = BertTokenizerFast.from_pretrained(pretrained_model)
         self.max_length = max_length
         self.train_data_loader, self.validation_data_loader, self.test_data_loader =  None, None, None
         self.model, self.batch_size = None, 100
@@ -392,7 +391,7 @@ dataset = load_dataset('glue', 'mrpc')
 mymodel = auto_build_model(dataset=dataset, 
                            dataset_x_features=['sentence1', 'sentence2'],
                            dataset_y_features=["label"],
-                           batch_size=64)
+                           batch_size=100)
 gc.collect()
 
 mymodel.train(train_data_loader=mymodel.train_data_loader, 
