@@ -38,6 +38,10 @@ class BERTFamily(nn.Module):
                         "has_test_data": False,
                         "hasModel": False,
                         "isTrained": False,
+                        "train_acc": 0.0,
+                        "train_loss": 0.0,
+                        "test_acc": 0.0,
+                        "test_loss": 0.0,
                         "accumulateEpoch": 0
                        }
         self.down_stream_task_domain = {"Downstream task\t": "BF_Family class", 
@@ -205,7 +209,10 @@ class BFClassification(BERTFamily):
                 print('[epoch %d] TrainACC: %.3f, loss: %.3f, EvalACC: %.3f, EvalLoss: %.3f' %(epoch + 1, correct/total, running_loss, eval_result["Accurancy"], eval_result["Loss"]))
             else:
                 print('[epoch %d] ACC: %.3f, loss: %.3f' %(epoch + 1, correct/total, running_loss))
+            self.status["train_acc"] = correct/total
+            self.status["train_loss"] = running_loss
             self.status["accumulateEpoch"] += 1
+        
 
 
     def evaluation(
@@ -384,19 +391,31 @@ def infinite_iter(data_loader):
             it = iter(data_loader)
 
 
-#test
+#test result: cola:0.827, mrpc:0.801
 import gc
+dataset_name = ['rte', 'wnli']
+x_name = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
+test_epochs = 10
+test_result = []
+train_result = []
 
-dataset = load_dataset('glue', 'mrpc')
-mymodel = auto_build_model(dataset=dataset, 
-                           dataset_x_features=['sentence1', 'sentence2'],
-                           dataset_y_features=["label"],
-                           batch_size=100)
-gc.collect()
-
-mymodel.train(train_data_loader=mymodel.train_data_loader, 
-              validation_data_loader=mymodel.validation_data_loader, epochs=1,
-              eval=True)
+for x, each_dataset in zip(x_name, dataset_name):
+    gc.collect()
+    print("Start", each_dataset, "evaluation.")
+    dataset = load_dataset('glue', each_dataset)
+    mymodel = auto_build_model(dataset=dataset, 
+                            dataset_x_features=x,
+                            dataset_y_features=["label"],
+                            batch_size=100)
+    mymodel.train(train_data_loader=mymodel.train_data_loader, 
+                validation_data_loader=mymodel.validation_data_loader, 
+                epochs=test_epochs,
+                eval=True)
+    train_result.append(mymodel.status["train_acc"])
+    test_result.append(mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False))
+    print("End of", each_dataset, ". Test Acc and Loss are", test_result[-1], ".")
+    del mymodel
+                
 """ 
 mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False)
 
