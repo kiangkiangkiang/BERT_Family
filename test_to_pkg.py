@@ -2,9 +2,9 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import torch
-from transformers import BertTokenizerFast
+from transformers import AutoTokenizer
 import pandas as pd
-from transformers import BertForSequenceClassification, BertForQuestionAnswering, BertForTokenClassification
+from transformers import AutoModelForSequenceClassification, BertForQuestionAnswering, BertForTokenClassification
 from tqdm.auto import tqdm
 import json
 from datasets import load_dataset, dataset_dict
@@ -118,7 +118,8 @@ class BFClassification(BERTFamily):
         """ 
 
         print("Using ", self.tokenizer, " to tokenize...")
-        tokenizer = BertTokenizerFast.from_pretrained(self.tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(self.tokenizer)
+        
         tmp_dataset = ClassificationDataset(raw_data=raw_data, raw_target=raw_target, 
                                             tokenizer=tokenizer, max_length=self.max_length)
 
@@ -136,11 +137,13 @@ class BFClassification(BERTFamily):
 
     def create_model(
         self, label_length:int, **kwargs
-        ) -> BertForSequenceClassification:
+        ):
 
         assert (self.label_length is not None) & (self.label_length == label_length), "Mismatch on the length of labels."
         self.status["hasModel"] = True
-        self.model = BertForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=label_length, **kwargs) 
+        #self.model = BertForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=label_length, **kwargs) 
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=label_length, **kwargs) 
+        
         return self.model
     
 
@@ -191,10 +194,12 @@ class BFClassification(BERTFamily):
             total, correct, running_loss = 0, 0, 0
             for df in tqdm(train_data_loader):
                 optimizer.zero_grad()
+
                 outputs = self.model(input_ids=df[0]["input_ids"].squeeze(1).to(self.device), 
-                                token_type_ids=df[0]["token_type_ids"].squeeze(1).to(self.device), 
-                                attention_mask=df[0]["attention_mask"].squeeze(1).to(self.device), 
-                                labels = df[1].to(self.device))
+                                    token_type_ids=df[0]["token_type_ids"].squeeze(1).to(self.device), 
+                                    attention_mask=df[0]["attention_mask"].squeeze(1).to(self.device), 
+                                    labels = df[1].to(self.device))
+
                 outputs[0].backward()
                 optimizer.step()
                 running_loss += outputs[0].item()
@@ -217,7 +222,7 @@ class BFClassification(BERTFamily):
 
     def evaluation(
         self, 
-        model:BertForSequenceClassification,
+        model: Any,
         eval_data_loader:DataLoader,
         eval: bool=False
         ) -> Dict[str, float]:
@@ -393,12 +398,11 @@ def infinite_iter(data_loader):
 
 #test result: cola:0.827, mrpc:0.801
 import gc
-dataset_name = ['rte', 'wnli']
-x_name = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
+dataset_name = ['rte', 'wnli', 'cola', 'mrpc', "sst2", "qnli"] #mnli
+x_name = [["sentence1", "sentence2"], ["sentence1", "sentence2"], ['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
 test_epochs = 10
-test_result = []
 train_result = []
-
+test_result = []
 for x, each_dataset in zip(x_name, dataset_name):
     gc.collect()
     print("Start", each_dataset, "evaluation.")
@@ -406,7 +410,9 @@ for x, each_dataset in zip(x_name, dataset_name):
     mymodel = auto_build_model(dataset=dataset, 
                             dataset_x_features=x,
                             dataset_y_features=["label"],
-                            batch_size=100)
+                            batch_size=100,
+                            tokenizer="albert-base-v2",
+                            pretrained_model="albert-base-v2")
     mymodel.train(train_data_loader=mymodel.train_data_loader, 
                 validation_data_loader=mymodel.validation_data_loader, 
                 epochs=test_epochs,
