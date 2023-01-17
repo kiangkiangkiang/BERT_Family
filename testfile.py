@@ -1068,3 +1068,43 @@ from datasets import load_dataset
 dataset = load_dataset('glue', 'mrpc', split='train')
 s = auto_build_model(dataset, dataset_x_features=[0, 1], dataset_y_features=[3])
 s.train(train_data_loader=s.train_data_loader, epochs=1)
+
+
+
+'''another file
+import gc
+#a = ['rte', 'wnli']
+#b = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
+dataset_name = ['cola', 'mrpc', "sst2", "qnli"] #mnli
+x_name = [['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
+test_epochs = 10
+train_result = []
+test_result = []
+each_dataset = "rte"
+x = ["sentence1", "sentence2"]
+
+gc.collect()
+print("Start", each_dataset, "evaluation.")
+dataset = load_dataset('glue', each_dataset)
+
+
+
+
+mymodel = auto_build_model(
+                        x_dataframe=pd.DataFrame(dataset["train"])[x],
+                        y=dataset["train"]["label"],
+                        batch_size=64,
+                        tokenizer="bert-base-uncased",
+                        pretrained_model="bert-base-uncased")
+
+
+mymodel.set_dataset(raw_data=pd.DataFrame(dataset["validation"])[x], raw_target=dataset["validation"]["label"],data_type="validation")
+mymodel.train(train_data_loader=mymodel.train_data_loader, 
+            validation_data_loader=mymodel.validation_data_loader, 
+            epochs=test_epochs,
+            eval=True)
+
+
+#mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False)
+#print("End of", each_dataset, ". Test Acc and Loss are", test_result[-1], ".")
+'''

@@ -182,7 +182,7 @@ class BFClassification(BERTFamily):
 
         assert self.status["hasModel"], "No model in the BERTFamily object."
         if not optimizer: 
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-6)
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
         if not lr_scheduler: 
             lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=2, gamma=0.5)
         self.status["isTrained"] = True
@@ -306,11 +306,10 @@ def auto_build_model(
     **kwargs: Parameters for BFClassification object. Mostly change tokenizer, pre-trained-model...
     '''
 
-    if dataset:
+    if dataset is not None:
         assert (dataset_x_features is not None) & (dataset_y_features is not None), "Missing x, y features name."
         x_dataframe, y, data_type = load_dataset_dict(data=dataset, x=dataset_x_features, y=dataset_y_features, data_type=data_type)
-        result_model = BFClassification(**kwargs)
-
+    result_model = BFClassification(**kwargs)
     if len(data_type) == 1:
         result_model.set_dataset(raw_data=x_dataframe, raw_target=y, batch_size=batch_size, data_type=data_type[0])
     else:
@@ -397,37 +396,6 @@ def infinite_iter(data_loader):
 
 
 #test result: cola:0.827, mrpc:0.801
-import gc
-#a = ['rte', 'wnli']
-#b = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
-dataset_name = ['cola', 'mrpc', "sst2", "qnli"] #mnli
-x_name = [['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
-test_epochs = 10
-train_result = []
-test_result = []
-each_dataset = "rte"
-x = ["sentence1", "sentence2"]
-
-gc.collect()
-print("Start", each_dataset, "evaluation.")
-dataset = load_dataset('glue', each_dataset)
-
-
-
-mymodel = auto_build_model(dataset=dataset, 
-                        dataset_x_features=x,
-                        dataset_y_features=["label"],
-                        batch_size=32,
-                        tokenizer="bert-base-uncased",
-                        pretrained_model="bert-base-uncased")
-mymodel.train(train_data_loader=mymodel.train_data_loader, 
-            validation_data_loader=mymodel.validation_data_loader, 
-            epochs=test_epochs,
-            eval=True)
-
-
-mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False)
-print("End of", each_dataset, ". Test Acc and Loss are", test_result[-1], ".")
 
 """ For All Dataset
 import gc
