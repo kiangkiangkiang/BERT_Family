@@ -182,7 +182,7 @@ class BFClassification(BERTFamily):
 
         assert self.status["hasModel"], "No model in the BERTFamily object."
         if not optimizer: 
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-6)
         if not lr_scheduler: 
             lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=2, gamma=0.5)
         self.status["isTrained"] = True
@@ -398,8 +398,43 @@ def infinite_iter(data_loader):
 
 #test result: cola:0.827, mrpc:0.801
 import gc
-dataset_name = ['rte', 'wnli', 'cola', 'mrpc', "sst2", "qnli"] #mnli
-x_name = [["sentence1", "sentence2"], ["sentence1", "sentence2"], ['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
+#a = ['rte', 'wnli']
+#b = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
+dataset_name = ['cola', 'mrpc', "sst2", "qnli"] #mnli
+x_name = [['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
+test_epochs = 10
+train_result = []
+test_result = []
+each_dataset = "rte"
+x = ["sentence1", "sentence2"]
+
+gc.collect()
+print("Start", each_dataset, "evaluation.")
+dataset = load_dataset('glue', each_dataset)
+
+
+
+mymodel = auto_build_model(dataset=dataset, 
+                        dataset_x_features=x,
+                        dataset_y_features=["label"],
+                        batch_size=32,
+                        tokenizer="bert-base-uncased",
+                        pretrained_model="bert-base-uncased")
+mymodel.train(train_data_loader=mymodel.train_data_loader, 
+            validation_data_loader=mymodel.validation_data_loader, 
+            epochs=test_epochs,
+            eval=True)
+
+
+mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False)
+print("End of", each_dataset, ". Test Acc and Loss are", test_result[-1], ".")
+
+""" For All Dataset
+import gc
+#a = ['rte', 'wnli']
+#b = [["sentence1", "sentence2"], ["sentence1", "sentence2"]]
+dataset_name = ['cola', 'mrpc', "sst2", "qnli"] #mnli
+x_name = [['sentence'], ["sentence1", "sentence2"], ["sentence"], ["question", "sentence"]]
 test_epochs = 10
 train_result = []
 test_result = []
@@ -410,7 +445,7 @@ for x, each_dataset in zip(x_name, dataset_name):
     mymodel = auto_build_model(dataset=dataset, 
                             dataset_x_features=x,
                             dataset_y_features=["label"],
-                            batch_size=100,
+                            batch_size=64,
                             tokenizer="albert-base-v2",
                             pretrained_model="albert-base-v2")
     mymodel.train(train_data_loader=mymodel.train_data_loader, 
@@ -421,11 +456,4 @@ for x, each_dataset in zip(x_name, dataset_name):
     test_result.append(mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False))
     print("End of", each_dataset, ". Test Acc and Loss are", test_result[-1], ".")
     del mymodel
-                
-""" 
-mymodel.evaluation(model=mymodel.model, eval_data_loader=mymodel.test_data_loader, eval=False)
-
-test_index = range(5)
-inf_data, ans = pd.DataFrame(dataset["test"]).iloc[test_index, 0:2], pd.DataFrame(dataset["test"]).iloc[test_index, 2]
-pre = mymodel.inference(mymodel.model, data=inf_data)
  """
