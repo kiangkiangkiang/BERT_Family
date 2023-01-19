@@ -1,6 +1,5 @@
-#run this file second
-from .BF_test import *
-import torch
-import torch.nn as nn
+from auto_process import *
+from BERT_Family import *
+from data_process import *
 
-print("In BERT_Family2's init")
+print("In BERT_Family 2 init")
