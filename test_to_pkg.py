@@ -10,6 +10,9 @@ import json
 from datasets import load_dataset, dataset_dict
 from typing import List, Optional, Iterable, Any, Union, Dict
 import numpy as np
+from datetime import datetime
+import os
+import warnings
 ########## Modules ##########
 #One or two sentence with one dim label
 
@@ -48,6 +51,7 @@ class BERTFamily(nn.Module):
                                         "Sequence Classification": "BFClassification",
                                         "Question Answering": "BFQA",
                                         "Token Classification": "BFTokenClassification"}
+        self.model_name = "model_" + datetime.now().strftime("%Y%m%d%H%M%S")
 
 
     def show_model_architecture(self) -> None:
@@ -72,19 +76,14 @@ class BERTFamily(nn.Module):
     def show_all_task_in_BERTFamily(self) -> None:
         print("\n".join("{}\t{}".format(k, v) for k, v in self.down_stream_task_domain.items()))  
 
-
-    def load_model(self, path: str) -> None:
-        self.status["hasModel"] = True
-        pass
-
-
-    def forecasting(self) -> None:
-        #For subclass inherit
-        pass
-
-
-    def save_model(self) -> None:
-        pass
+    
+    def save_model(self, path:str) -> None:
+        assert self.status["hasModel"] == True, "No model can be save. Please use load_model() to create a specific model."
+        PATH = path if path is not None else os.getcwd() + "/model_history/"
+        if not os.path.exists(PATH):
+            warnings.warn('Cannot find the directory. Auto build model in'+PATH, RuntimeWarning)
+            os.mkdir(PATH) 
+        torch.save(self.model.state_dict(), PATH + self.model_name + ".pth")
 
 
 
@@ -95,14 +94,15 @@ class BFClassification(BERTFamily):
         self.target_key2value = None
         self.target_value2key = None
         self.status["BERT_Type"].append("BFClassification")
-
+        
 
     def set_dataset(
         self, 
         raw_data: pd.DataFrame, 
         raw_target: Optional[Iterable]=None, 
         data_type: str="train", 
-        batch_size: int=128, 
+        batch_size: int=128,
+        model_name: str=None,
         **kwargs
         ) -> DataLoader:
 
@@ -130,20 +130,20 @@ class BFClassification(BERTFamily):
             self.target_key2value = tmp_dataset.target_key2value
             self.target_value2key = tmp_dataset.target_value2key
             self.label_length = len(tmp_dataset.target_key2value)
+            if model_name is not None:
+                self.model_name = model_name
             return eval("self." + data_type + "_data_loader")
 
         return DataLoader(tmp_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, **kwargs)
 
 
-    def create_model(
-        self, label_length:int, **kwargs
-        ):
-
-        assert (self.label_length is not None) & (self.label_length == label_length), "Mismatch on the length of labels."
+    def load_model(self, model_path: Any=None, **kwargs):
+        assert self.label_length is not None, "Mismatch on the length of labels."
         self.status["hasModel"] = True
-        #self.model = BertForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=label_length, **kwargs) 
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=label_length, **kwargs) 
-        
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.pretrained_model, num_labels=self.label_length, **kwargs) 
+        if model_path is not None:
+            state_dict = torch.load(model_path)
+            self.model.load_state_dict(state_dict)
         return self.model
     
 
@@ -177,7 +177,9 @@ class BFClassification(BERTFamily):
         epochs: int=5, 
         optimizer: Any=None, 
         lr_scheduler: Any=None,
-        eval: bool=False
+        eval: bool=False,
+        save_model: bool=True,
+        save_path: str=None
         ) -> None:
 
         assert self.status["hasModel"], "No model in the BERTFamily object."
@@ -217,7 +219,9 @@ class BFClassification(BERTFamily):
             self.status["train_acc"] = correct/total
             self.status["train_loss"] = running_loss
             self.status["accumulateEpoch"] += 1
-        
+            
+            if save_model:
+                self.save_model(path = save_path)
 
 
     def evaluation(
@@ -316,7 +320,7 @@ def auto_build_model(
         for i in range(len(data_type)):
             result_model.set_dataset(raw_data=x_dataframe[i], raw_target=y[i], batch_size=batch_size, data_type=data_type[i])
             
-    result_model.create_model(result_model.label_length)
+    result_model.load_model()
     result_model.show_model_architecture()
     result_model.show_status()
     return result_model
@@ -399,7 +403,7 @@ def infinite_iter(data_loader):
 
 
 
-dataset = load_dataset('glue', "mrpc")
+dataset = load_dataset('glue', "wnli")
 mymodel = auto_build_model(dataset=dataset, 
                         dataset_x_features=["sentence1", "sentence2"],
                         dataset_y_features=["label"],
@@ -410,6 +414,9 @@ mymodel.train(train_data_loader=mymodel.train_data_loader,
             validation_data_loader=mymodel.validation_data_loader, 
             epochs=1,
             eval=True)
+
+#del mymodel.model
+#mymodel.load_model(model_path="/home/ubuntu/work/model_history/model_20230119031015.pth")
 
 
 
