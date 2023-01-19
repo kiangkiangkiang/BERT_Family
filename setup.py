@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 setup(name='BERT_Family',
@@ -7,7 +7,7 @@ description='BERT models summary',
 author='Luka Jiang',
 author_email='lukajiang1998@gmail.com',
 url='https://github.com/kiangkiangkiang/BERT_Family',
-packages=['BERT_Family'],
+packages=find_packages(),
 # 表明當前模塊依賴哪些包，若環境中沒有，則會從pypi中下載安裝  
 install_requires=['docutils>=0.3'],  
 classifiers = [  
