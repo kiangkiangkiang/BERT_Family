@@ -397,6 +397,22 @@ def infinite_iter(data_loader):
 
 #test result: cola:0.827, mrpc:0.801
 
+
+
+dataset = load_dataset('glue', "mrpc")
+mymodel = auto_build_model(dataset=dataset, 
+                        dataset_x_features=["sentence1", "sentence2"],
+                        dataset_y_features=["label"],
+                        batch_size=64,
+                        tokenizer="albert-base-v2",
+                        pretrained_model="albert-base-v2")
+mymodel.train(train_data_loader=mymodel.train_data_loader, 
+            validation_data_loader=mymodel.validation_data_loader, 
+            epochs=1,
+            eval=True)
+
+
+
 """ For All Dataset
 import gc
 #a = ['rte', 'wnli']
