@@ -3,11 +3,11 @@ from ..BERT_Family.auto_process import *
 
 dataset = load_dataset('glue', "cola")
 mymodel = auto_build_model(dataset=dataset, 
-                        dataset_x_features=["sentence"],
-                        dataset_y_features=["label"],
-                        batch_size=64,
-                        tokenizer="albert-base-v2",
-                        pretrained_model="albert-base-v2")
+                           dataset_x_features=["sentence"],
+                           dataset_y_features=["label"],
+                           batch_size=64,
+                           tokenizer="albert-base-v2",
+                           pretrained_model="albert-base-v2")
 mymodel.train(train_data_loader=mymodel.train_data_loader, 
             validation_data_loader=mymodel.validation_data_loader, 
             epochs=1,
