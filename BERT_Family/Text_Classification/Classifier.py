@@ -1,9 +1,9 @@
 import pandas as pd
 from typing import Optional, Iterable, Any, Dict
+from .Dataset import ClassificationDataset
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
-from .Dataset import ClassificationDataset
 from tqdm.auto import tqdm
 from ..BERT_Family import BERTFamily
 
