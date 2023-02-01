@@ -13,8 +13,6 @@ mymodel.train(train_data_loader=mymodel.train_data_loader,
             epochs=1,
             eval=True)
 
-#del mymodel.model
-#mymodel.load_model(model_path="/home/ubuntu/work/model_history/model_20230119031015.pth")
 
 
 """ For All Dataset
