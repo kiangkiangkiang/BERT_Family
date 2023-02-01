@@ -1,5 +1,5 @@
 from ..BERT_Family import BERTFamily
-from .Dataset import *
+from .Dataset import QADataset
 from transformers import BertForQuestionAnswering, BertTokenizerFast
 from tqdm.auto import tqdm
 
