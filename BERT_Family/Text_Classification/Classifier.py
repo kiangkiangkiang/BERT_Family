@@ -34,7 +34,7 @@ class BFClassification(BERTFamily):
         **kwargs: The argument in DataLoader
 
         Return 3 object:
-        dataset, dataloader, dataloader with iter
+        dataset, dataloader, dataloader with iter.
         """ 
 
         print("Using ", self.tokenizer, " to tokenize...")
