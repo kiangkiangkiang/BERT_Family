@@ -1,4 +1,4 @@
-from typing import List, Any, Union
+from typing import List, Any, Union, Tuple
 import pandas as pd
 from .Text_Classification.Classifier import *
 
@@ -38,8 +38,7 @@ def load_dataset_dict(
     x: Union[List[int], List[str]]=None, 
     y: Union[List[int], List[str]]=None, 
     data_type: List[str]=["train"]
-    ):
-    # -> tuple[pd.DataFrame, list, List[str]]
+    ) -> Tuple[pd.DataFrame, list, List[str]]:
 
     """ 
     Input: 
@@ -69,7 +68,7 @@ def dataset2dataframe(
     data: Any=None, 
     x: Union[List[int], List[str]]=None, 
     y: Union[List[int], List[str]]=None, 
-    ) -> tuple[pd.DataFrame, list]:
+    ) -> Tuple[pd.DataFrame, list]:
 
     assert type(data).__name__ == "Dataset", "Only accept Dataset class."
     data_pd = pd.DataFrame(data)
