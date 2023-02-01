@@ -1,6 +1,6 @@
 from typing import List, Any, Union
 import pandas as pd
-from Text_Classification.Classifier import *
+from .Text_Classification.Classifier import *
 
 def auto_build_model(
     dataset: Any=None, 
