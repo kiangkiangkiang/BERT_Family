@@ -9,7 +9,6 @@ from ..BERT_Family import BERTFamily
 
 class BFClassification(BERTFamily):
     def __init__(self, **kwargs):
-        print("123")
         super().__init__(**kwargs)
         self.label_length = None
         self.target_key2value = None
