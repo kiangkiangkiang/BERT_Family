@@ -75,7 +75,7 @@ class BFClassification(BERTFamily):
         **kwargs
         ) -> list:
 
-        tmp_dataset = ClassificationDataset(raw_data=data, tokenizer=self.tokenizer, max_length=self.max_length)
+        tmp_dataset = ClassificationDataset(raw_data=data, tokenizer=AutoTokenizer.from_pretrained(self.tokenizer), max_length=self.max_length)
         data_loader = DataLoader(tmp_dataset, batch_size=batch_size, **kwargs)
         predictions = []
         model.to(self.device)
