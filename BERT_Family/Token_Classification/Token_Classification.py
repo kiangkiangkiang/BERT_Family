@@ -1,6 +1,6 @@
 from ..BERT_Family import BERTFamily
 from torch.utils.data import DataLoader
-from Dataset import *
+from .Dataset import *
 from datasets import dataset_dict
 from transformers import BertForTokenClassification
 
