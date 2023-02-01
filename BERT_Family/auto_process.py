@@ -38,7 +38,8 @@ def load_dataset_dict(
     x: Union[List[int], List[str]]=None, 
     y: Union[List[int], List[str]]=None, 
     data_type: List[str]=["train"]
-    ) -> tuple[pd.DataFrame, list, List[str]]:
+    ):
+    # -> tuple[pd.DataFrame, list, List[str]]
 
     """ 
     Input: 
