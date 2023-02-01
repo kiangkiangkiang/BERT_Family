@@ -12,7 +12,8 @@ packages=find_packages(),
 install_requires=['transformers >= 4.25.1',
                     'torch >= 1.13.1',
                     'pandas >= 1.5.2',
-                    'tqdm >= 4.64.1'],  
+                    'tqdm >= 4.64.1',
+                    'datasets >= 2.8.0'],  
 classifiers = [  
         # 發展時期,常見的如下  
         # 詳見https://pypi.org/pypi?%3Aaction=list_classifiers
