@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: BERT-Family
+Version: 0.0.1
+Summary: BERT models summary
+Home-page: https://github.com/kiangkiangkiang/BERT_Family
+Author: Luka Jiang
+Author-email: lukajiang1998@gmail.com
+License: MIT
+Classifier: Development Status :: 1 - Planning
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Education :: Testing
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.9
+License-File: LICENSE.txt
